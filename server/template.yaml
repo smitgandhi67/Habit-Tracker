@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: HabitTracker API
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 15
+    MemorySize: 256
+    Environment:
+      Variables:
+        NODE_ENV: production
+        MONGODB_URI: !Ref MongoDbUri
+        JWT_SECRET: !Ref JwtSecret
+        GOOGLE_CLIENT_ID: !Ref GoogleClientId
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        COOKIE_SAME_SITE: none
+
+Parameters:
+  MongoDbUri:
+    Type: String
+    NoEcho: true
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  GoogleClientId:
+    Type: String
+  AllowedOrigin:
+    Type: String
+
+Resources:
+  HabitTrackerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda.handler
+      CodeUri: .
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HabitTrackerApi
+
+  HabitTrackerApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedOrigin
+        AllowHeaders:
+          - Content-Type
+          - Cookie
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowCredentials: true
+        MaxAge: 300
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${HabitTrackerApi}.execute-api.${AWS::Region}.amazonaws.com'

@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: #f8f7ff;
+  font-family: system-ui, 'Segoe UI', sans-serif;
+}
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+}
