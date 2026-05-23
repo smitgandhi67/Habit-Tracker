@@ -79,6 +79,14 @@ export function useGym() {
     }
   }, []);
 
+  const fetchProgress = useCallback(async (weeks = 12) => {
+    try {
+      return await apiFetch(`/api/gym/progress?weeks=${weeks}`);
+    } catch {
+      return [];
+    }
+  }, []);
+
   const addExerciseTemplate = useCallback(async (name, bodyPart) => {
     return await apiFetch('/api/gym/exercises-list', {
       method: 'POST',
@@ -119,5 +127,6 @@ export function useGym() {
     fetchExerciseHistory, fetchExerciseNames,
     fetchExerciseList, addExerciseTemplate, deleteExerciseTemplate,
     addEntry, updateEntry, deleteEntry,
+    fetchProgress,
   };
 }
