@@ -32,13 +32,13 @@ export default function WeeklyExerciseStatus({ weekData }) {
   const weekDates = getThisWeekDates();
   const today = format(new Date(), 'yyyy-MM-dd');
 
-  // Map exerciseName → set of day labels done this week
+  // Map exerciseName → unique day labels done this week
   const doneMap = {};
   for (const entry of weekData) {
-    if (!weekDates.includes(entry.date)) continue;
+    if (!entry.exerciseName || !weekDates.includes(entry.date)) continue;
     const dayIdx = weekDates.indexOf(entry.date);
-    if (!doneMap[entry.exerciseName]) doneMap[entry.exerciseName] = [];
-    doneMap[entry.exerciseName].push(DAY_LABEL[dayIdx]);
+    if (!doneMap[entry.exerciseName]) doneMap[entry.exerciseName] = new Set();
+    doneMap[entry.exerciseName].add(DAY_LABEL[dayIdx]);
   }
 
   // Group library by body part
@@ -47,7 +47,7 @@ export default function WeeklyExerciseStatus({ weekData }) {
     exercises: library.filter(ex => ex.bodyPart === bp.key),
     doneExercises: [...new Set(
       weekData
-        .filter(e => e.bodyPart === bp.key && weekDates.includes(e.date))
+        .filter(e => e.bodyPart === bp.key && weekDates.includes(e.date) && e.exerciseName)
         .map(e => e.exerciseName)
     )],
   })).filter(bp => bp.exercises.length > 0 || bp.doneExercises.length > 0);
@@ -116,7 +116,7 @@ export default function WeeklyExerciseStatus({ weekData }) {
                   </span>
                   <span className="text-sm text-slate-700 flex-1">{name}</span>
                   <span className="text-xs text-green-600 font-medium">
-                    {doneMap[name]?.join(', ')}
+                    {doneMap[name] ? [...doneMap[name]].join(', ') : ''}
                   </span>
                 </div>
               ))}
