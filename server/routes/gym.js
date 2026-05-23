@@ -55,7 +55,7 @@ router.get('/week', async (req, res) => {
 
     const entries = await GymEntry.find(
       { userId: req.user._id, date: { $in: dates } },
-      { date: 1, bodyPart: 1 }
+      { date: 1, bodyPart: 1, exerciseName: 1 }
     );
     res.json(entries);
   } catch (err) {

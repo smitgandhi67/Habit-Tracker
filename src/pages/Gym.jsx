@@ -8,6 +8,7 @@ import WeeklyCoverage from '../components/WeeklyCoverage';
 import GymEntryModal from '../components/GymEntryModal';
 import ManageExercisesModal from '../components/ManageExercisesModal';
 import ExerciseProgress from '../components/ExerciseProgress';
+import WeeklyExerciseStatus from '../components/WeeklyExerciseStatus';
 
 function bodyPartLabel(key) {
   return BODY_PARTS.find(b => b.key === key)?.label ?? key;
@@ -123,7 +124,7 @@ export default function Gym() {
 
       {/* Tab bar */}
       <div className="flex border-b border-slate-200 mb-4">
-        {[['log', 'Log'], ['progress', 'Progress']].map(([key, label]) => (
+        {[['log', 'Log'], ['week', 'This Week'], ['progress', 'Progress']].map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -140,6 +141,8 @@ export default function Gym() {
 
       {tab === 'progress' ? (
         <ExerciseProgress />
+      ) : tab === 'week' ? (
+        <WeeklyExerciseStatus weekData={weekData} />
       ) : (
         <>
           {/* Weekly coverage */}
