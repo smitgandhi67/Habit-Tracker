@@ -140,10 +140,10 @@ router.delete('/entries/:id', async (req, res) => {
 
 // ─── exercise templates ──────────────────────────────────────────────────────
 
-// GET /api/gym/exercises-list?bodyPart=  (optional filter)
+// GET /api/gym/exercises-list?bodyPart=  (optional filter) — shared across all users
 router.get('/exercises-list', async (req, res) => {
   try {
-    const filter = { userId: req.user._id };
+    const filter = {};
     if (req.query.bodyPart) filter.bodyPart = req.query.bodyPart;
     const list = await Exercise.find(filter).sort({ name: 1 });
     res.json(list);
@@ -152,7 +152,7 @@ router.get('/exercises-list', async (req, res) => {
   }
 });
 
-// POST /api/gym/exercises-list
+// POST /api/gym/exercises-list — anyone can add; userId stored for audit
 router.post('/exercises-list', async (req, res) => {
   try {
     const { name, bodyPart } = req.body;
@@ -165,10 +165,13 @@ router.post('/exercises-list', async (req, res) => {
   }
 });
 
-// DELETE /api/gym/exercises-list/:id
+// DELETE /api/gym/exercises-list/:id — admin only
 router.delete('/exercises-list/:id', async (req, res) => {
   try {
-    const ex = await Exercise.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (req.user.email !== 'amitgandhi23@gmail.com') {
+      return res.status(403).json({ error: 'Not authorised' });
+    }
+    const ex = await Exercise.findByIdAndDelete(req.params.id);
     if (!ex) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Deleted' });
   } catch (err) {

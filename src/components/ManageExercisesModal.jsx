@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { BODY_PARTS } from '../hooks/useGym';
 
-export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, deleteExerciseTemplate, onClose }) {
+export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, deleteExerciseTemplate, onClose, isAdmin }) {
   const [selectedPart, setSelectedPart] = useState(BODY_PARTS[0].key);
   const [exercises,    setExercises]    = useState([]);
   const [loading,      setLoading]      = useState(false);
@@ -98,12 +98,14 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
               {exercises.map(ex => (
                 <li key={ex._id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
                   <span className="text-sm text-slate-700">{ex.name}</span>
-                  <button
-                    onClick={() => handleDelete(ex._id)}
-                    className="p-1 rounded-full hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 size={14} className="text-red-400" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDelete(ex._id)}
+                      className="p-1 rounded-full hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 size={14} className="text-red-400" />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

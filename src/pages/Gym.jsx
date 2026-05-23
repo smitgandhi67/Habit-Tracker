@@ -3,6 +3,7 @@ import { format, addDays, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Trophy, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useGym, BODY_PARTS } from '../hooks/useGym';
+import { useAuth } from '../context/AuthContext';
 import WeeklyCoverage from '../components/WeeklyCoverage';
 import GymEntryModal from '../components/GymEntryModal';
 import ManageExercisesModal from '../components/ManageExercisesModal';
@@ -28,6 +29,9 @@ export default function Gym() {
   const [editEntry,  setEditEntry]  = useState(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [tab,        setTab]        = useState('log');
+
+  const { user } = useAuth();
+  const isAdmin = user?.email === 'amitgandhi23@gmail.com';
 
   const {
     entries, weekData, loading, weekLoading,
@@ -234,6 +238,7 @@ export default function Gym() {
           addExerciseTemplate={addExerciseTemplate}
           deleteExerciseTemplate={deleteExerciseTemplate}
           onClose={() => setManageOpen(false)}
+          isAdmin={isAdmin}
         />
       )}
     </div>
