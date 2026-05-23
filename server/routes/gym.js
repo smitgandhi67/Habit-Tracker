@@ -176,4 +176,87 @@ router.delete('/exercises-list/:id', async (req, res) => {
   }
 });
 
+// GET /api/gym/progress?weeks=12
+router.get('/progress', async (req, res) => {
+  try {
+    const weeks = Math.min(parseInt(req.query.weeks) || 12, 52);
+
+    // Build Monday-aligned week start dates for the last N weeks
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
+    const daysToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const thisMonday = new Date(now);
+    thisMonday.setDate(now.getDate() + daysToMon);
+    thisMonday.setHours(0, 0, 0, 0);
+
+    const weekStarts = [];
+    for (let i = weeks - 1; i >= 0; i--) {
+      const d = new Date(thisMonday);
+      d.setDate(d.getDate() - i * 7);
+      weekStarts.push(d.toISOString().slice(0, 10));
+    }
+
+    // Date range: first Monday → end of current week
+    const rangeEnd = new Date(thisMonday);
+    rangeEnd.setDate(rangeEnd.getDate() + 6);
+    const rangeStart = weekStarts[0];
+    const rangeEndStr = rangeEnd.toISOString().slice(0, 10);
+
+    const entries = await GymEntry.find({
+      userId: req.user._id,
+      date: { $gte: rangeStart, $lte: rangeEndStr },
+    }).lean();
+
+    if (entries.length === 0) return res.json([]);
+
+    // Map a YYYY-MM-DD date to its Monday week-start
+    function toWeekStart(dateStr) {
+      const d = new Date(dateStr);
+      const dow = d.getDay();
+      const diff = dow === 0 ? -6 : 1 - dow;
+      d.setDate(d.getDate() + diff);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // Aggregate: exerciseName → bodyPart + per-week stats
+    const map = {};
+    for (const entry of entries) {
+      if (!map[entry.exerciseName]) {
+        map[entry.exerciseName] = { bodyPart: entry.bodyPart, weeks: {} };
+      }
+      const ws = toWeekStart(entry.date);
+      if (!map[entry.exerciseName].weeks[ws]) {
+        map[entry.exerciseName].weeks[ws] = { maxWeight: 0, totalVolume: 0, sessions: 0 };
+      }
+      const w = map[entry.exerciseName].weeks[ws];
+      w.sessions++;
+      w.maxWeight = Math.max(w.maxWeight, entry.prWeight || 0);
+      const vol = entry.sets.reduce((sum, s) => sum + (s.reps || 0) * (s.weight || 0), 0);
+      w.totalVolume += vol;
+    }
+
+    // Build result with zero-filled weeks
+    const result = Object.entries(map).map(([exerciseName, data]) => ({
+      exerciseName,
+      bodyPart: data.bodyPart,
+      weeks: weekStarts.map(ws => ({
+        weekStart: ws,
+        maxWeight: data.weeks[ws]?.maxWeight || 0,
+        totalVolume: data.weeks[ws]?.totalVolume || 0,
+        sessions: data.weeks[ws]?.sessions || 0,
+      })),
+    }));
+
+    // Sort by most recently active week
+    result.sort((a, b) => {
+      const lastActive = arr => [...arr].reverse().find(w => w.sessions > 0)?.weekStart || '';
+      return lastActive(b.weeks).localeCompare(lastActive(a.weeks));
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
