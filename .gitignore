@@ -30,3 +30,21 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# AWS SAM build artifacts (may bundle .env into deploy zip)
+server/.aws-sam/
+.aws-sam/
+
+# AWS credentials
+.aws/
+aws-exports.js
+
+# Misc secret-leaking patterns
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+*.crt
+secrets.json
+credentials.json
