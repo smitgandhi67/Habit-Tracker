@@ -11,6 +11,7 @@ parallel = true
 [default.deploy.parameters]
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
+disable_rollback = true
 resolve_s3 = true
 region = "us-east-2"
 s3_prefix = "habit-tracker"
