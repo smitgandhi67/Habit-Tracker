@@ -21,6 +21,7 @@ const habitsRouter = require('./routes/habits');
 const logsRouter   = require('./routes/logs');
 const gymRouter    = require('./routes/gym');
 const plansRouter  = require('./routes/plans');
+const sleepRouter  = require('./routes/sleep');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -58,6 +59,7 @@ app.use('/api/habits', requireAuth, habitsRouter);
 app.use('/api/logs',   requireAuth, logsRouter);
 app.use('/api/gym',    requireAuth, gymRouter);
 app.use('/api/plans',  requireAuth, plansRouter);
+app.use('/api/sleep',  requireAuth, sleepRouter);
 
 app.use(errorHandler);
 
