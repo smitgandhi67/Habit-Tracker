@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, LogOut } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/habits',  icon: ListChecks,   label: 'Habits'  },
   { to: '/reports', icon: BarChart2,    label: 'Reports' },
   { to: '/gym',     icon: Dumbbell,     label: 'Gym'     },
+  { to: '/sleep',   icon: Moon,         label: 'Sleep'   },
 ];
 
 export default function Layout({ children }) {
