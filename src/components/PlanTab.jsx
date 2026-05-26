@@ -48,9 +48,11 @@ export default function PlanTab({ weekData, onOpenEntry }) {
 
   // Reset day selection when active plan changes (keep if still valid).
   useEffect(() => {
-    if (!activePlan) { setSelectedDayLabel(''); return; }
-    const stillValid = activePlan.days?.some(d => d.label === selectedDayLabel);
-    if (!stillValid) setSelectedDayLabel(activePlan.days?.[0]?.label || '');
+    queueMicrotask(() => {
+      if (!activePlan) { setSelectedDayLabel(''); return; }
+      const stillValid = activePlan.days?.some(d => d.label === selectedDayLabel);
+      if (!stillValid) setSelectedDayLabel(activePlan.days?.[0]?.label || '');
+    });
   }, [activePlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Library is the source of truth for videoUrl per exercise (plan stores only id/name).
