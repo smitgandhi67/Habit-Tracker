@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
 
 // Converts a Date to 'YYYY-MM-DDTHH:mm' in local time, suitable for <input type="datetime-local">.
@@ -20,16 +20,11 @@ export default function SleepSessionModal({ session, defaults, onSave, onClose, 
   const isEdit = !!session?._id;
   const title = isEdit ? 'Edit sleep segment' : 'Add sleep entry';
 
+  // Parent passes key={session?._id || 'new'} so this component remounts when
+  // switching between targets — no effect-based reset needed.
   const [start, setStart] = useState(() => toLocalInput(session?.startAt ?? defaults?.startAt ?? guessStart()));
   const [end,   setEnd]   = useState(() => toLocalInput(session?.endAt ?? defaults?.endAt ?? guessEnd()));
   const [error, setError] = useState('');
-
-  // Reset when target session changes (e.g. opening a different one).
-  useEffect(() => {
-    setStart(toLocalInput(session?.startAt ?? defaults?.startAt ?? guessStart()));
-    setEnd(toLocalInput(session?.endAt ?? defaults?.endAt ?? guessEnd()));
-    setError('');
-  }, [session?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSubmit(e) {
     e.preventDefault();

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -29,9 +29,6 @@ export function useSleep() {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
 
-  // Holds the latest reload fn so the polling effect always sees fresh state.
-  const reloadRef = useRef(null);
-
   const reload = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -52,7 +49,6 @@ export function useSleep() {
       setLoading(false);
     }
   }, [userId]);
-  reloadRef.current = reload;
 
   const refreshActive = useCallback(async () => {
     if (!userId) return;
@@ -65,7 +61,9 @@ export function useSleep() {
   // Initial load + poll active while page visible.
   useEffect(() => {
     if (!userId) return;
-    reload();
+    // Defer to microtask so the synchronous setState inside reload() doesn't
+    // run as part of the effect body (avoids cascading-render lint).
+    queueMicrotask(() => { reload(); });
 
     let id = null;
     const start = () => {

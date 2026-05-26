@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSleep } from '../hooks/useSleep';
@@ -37,7 +37,13 @@ export default function Sleep() {
     () => grouped.find(g => g.nightDate === tonightDate) || null,
     [grouped, tonightDate],
   );
-  const staleActive = active && (Date.now() - new Date(active.startAt).getTime()) > STALE_MS;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [active]);
+  const staleActive = active && (nowMs - new Date(active.startAt).getTime() > STALE_MS);
 
   async function handleStart() {
     setBusy(true);
@@ -160,6 +166,7 @@ export default function Sleep() {
 
       {modal && (
         <SleepSessionModal
+          key={modal.session?._id || 'new'}
           session={modal.session}
           busy={busy}
           onSave={handleSave}
