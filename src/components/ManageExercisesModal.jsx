@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, Play, Save } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { BODY_PARTS } from '../hooks/useGym';
 
-export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, deleteExerciseTemplate, onClose, isAdmin }) {
+export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate, onClose, isAdmin }) {
   const [selectedPart, setSelectedPart] = useState(BODY_PARTS[0].key);
   const [exercises,    setExercises]    = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [newName,      setNewName]      = useState('');
+  const [newVideo,     setNewVideo]     = useState('');
   const [adding,       setAdding]       = useState(false);
   const [error,        setError]        = useState('');
+  const [editingId,    setEditingId]    = useState(null);
+  const [editingUrl,   setEditingUrl]   = useState('');
+  const [savingUrl,    setSavingUrl]    = useState(false);
 
   useEffect(() => {
     load(selectedPart);
@@ -27,9 +32,10 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
     setAdding(true);
     setError('');
     try {
-      const ex = await addExerciseTemplate(name, selectedPart);
+      const ex = await addExerciseTemplate(name, selectedPart, newVideo.trim());
       setExercises(prev => [...prev, ex].sort((a, b) => a.name.localeCompare(b.name)));
       setNewName('');
+      setNewVideo('');
     } catch (err) {
       setError(err.message || 'Failed to add exercise');
     } finally {
@@ -40,6 +46,30 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
   async function handleDelete(id) {
     await deleteExerciseTemplate(id);
     setExercises(prev => prev.filter(e => e._id !== id));
+  }
+
+  function startEditingUrl(ex) {
+    setEditingId(ex._id);
+    setEditingUrl(ex.videoUrl || '');
+  }
+
+  function cancelEditingUrl() {
+    setEditingId(null);
+    setEditingUrl('');
+  }
+
+  async function saveUrl(id) {
+    setSavingUrl(true);
+    try {
+      const updated = await updateExerciseTemplate(id, { videoUrl: editingUrl.trim() });
+      setExercises(prev => prev.map(e => e._id === id ? updated : e));
+      cancelEditingUrl();
+      toast.success('Video link saved');
+    } catch (err) {
+      toast.error(err.message || 'Failed to save video link');
+    } finally {
+      setSavingUrl(false);
+    }
   }
 
   function handleKeyDown(e) {
@@ -96,15 +126,65 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
           ) : (
             <ul className="space-y-1.5 py-2">
               {exercises.map(ex => (
-                <li key={ex._id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
-                  <span className="text-sm text-slate-700">{ex.name}</span>
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleDelete(ex._id)}
-                      className="p-1 rounded-full hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 size={14} className="text-red-400" />
-                    </button>
+                <li key={ex._id} className="bg-slate-50 rounded-xl px-3.5 py-2.5 border border-slate-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{ex.name}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {ex.videoUrl && editingId !== ex._id && (
+                        <a
+                          href={ex.videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 rounded-full text-violet-500 hover:bg-violet-50 transition-colors"
+                          title="Open video"
+                        >
+                          <Play size={13} />
+                        </a>
+                      )}
+                      {editingId !== ex._id ? (
+                        <button
+                          onClick={() => startEditingUrl(ex)}
+                          className="text-xs text-violet-600 font-medium hover:underline px-2 py-0.5"
+                        >
+                          {ex.videoUrl ? 'Edit link' : 'Add link'}
+                        </button>
+                      ) : null}
+                      {isAdmin && editingId !== ex._id && (
+                        <button
+                          onClick={() => handleDelete(ex._id)}
+                          className="p-1 rounded-full hover:bg-red-50 transition-colors"
+                          title="Delete exercise"
+                        >
+                          <Trash2 size={14} className="text-red-400" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {editingId === ex._id && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={editingUrl}
+                        onChange={e => setEditingUrl(e.target.value)}
+                        placeholder="https://youtube.com/..."
+                        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      />
+                      <button
+                        onClick={() => saveUrl(ex._id)}
+                        disabled={savingUrl}
+                        className="p-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                        title="Save"
+                      >
+                        <Save size={13} />
+                      </button>
+                      <button
+                        onClick={cancelEditingUrl}
+                        className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
+                        title="Cancel"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
                   )}
                 </li>
               ))}
@@ -113,8 +193,8 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
         </div>
 
         {/* Add exercise input */}
-        <div className="px-5 pb-6 pt-3 border-t border-slate-100 shrink-0">
-          {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+        <div className="px-5 pb-6 pt-3 border-t border-slate-100 shrink-0 space-y-2">
+          {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             <input
               type="text"
@@ -132,6 +212,13 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
               <Plus size={16} />
             </button>
           </div>
+          <input
+            type="url"
+            value={newVideo}
+            onChange={e => setNewVideo(e.target.value)}
+            placeholder="Optional: video URL (https://...)"
+            className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
         </div>
       </div>
     </div>

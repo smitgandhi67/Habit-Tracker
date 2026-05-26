@@ -1,46 +1,77 @@
-import { useState, useEffect } from 'react';
-import { X, Plus, Minus, Trophy } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Plus, Minus, Trophy, ShieldCheck } from 'lucide-react';
 import { BODY_PARTS, FEEL_OPTIONS } from '../hooks/useGym';
 
 const DEFAULT_SET = { reps: '', weight: '' };
 
-export default function GymEntryModal({ date, entry, fetchExerciseList, fetchExerciseHistory, onSave, onClose }) {
+// Eight non-negotiable safety self-checks from the master plan.
+const SAFETY_ITEMS = [
+  { key: 'warmup',       label: 'Warmed up 8-10 min (cardio + mobility + warmup sets)' },
+  { key: 'eccentric',    label: 'Controlled eccentric (2-3 sec down, 1 sec up)' },
+  { key: 'notToFailure', label: 'Stopped 1-2 reps shy of failure' },
+  { key: 'breathing',    label: 'Exhaled on exertion, no breath-holding' },
+  { key: 'noJointPain',  label: 'No sharp / joint pain' },
+  { key: 'noBehindNeck', label: 'No behind-the-neck pulldowns or presses' },
+  { key: 'noLockout',    label: 'No locked knees / elbows under heavy load' },
+  { key: 'recovered',    label: '48h since training the same muscle' },
+];
+
+function emptySafetyChecks() {
+  return Object.fromEntries(SAFETY_ITEMS.map(i => [i.key, false]));
+}
+
+export default function GymEntryModal({ date, entry, prefill, fetchExerciseList, fetchExerciseHistory, onSave, onClose }) {
   const isEdit = !!entry;
 
-  const [bodyPart,     setBodyPart]     = useState(entry?.bodyPart     || '');
-  const [exerciseName, setExerciseName] = useState(entry?.exerciseName || '');
-  const [feel,         setFeel]         = useState(entry?.feel         || 'medium');
-  const [sets,         setSets]         = useState(
-    entry?.sets?.length
-      ? entry.sets.map(s => ({ reps: String(s.reps ?? ''), weight: String(s.weight ?? '') }))
-      : [{ ...DEFAULT_SET }]
-  );
+  const initialBodyPart     = entry?.bodyPart     ?? prefill?.bodyPart     ?? '';
+  const initialExerciseName = entry?.exerciseName ?? prefill?.exerciseName ?? '';
+  const initialFeel         = entry?.feel         ?? 'medium';
+  const initialSets = entry?.sets?.length
+    ? entry.sets.map(s => ({ reps: String(s.reps ?? ''), weight: String(s.weight ?? '') }))
+    : prefill?.sets
+      ? Array.from({ length: Math.min(3, Math.max(1, Number(prefill.sets) || 1)) },
+          () => ({ ...DEFAULT_SET }))
+      : [{ ...DEFAULT_SET }];
+
+  const [bodyPart,     setBodyPart]     = useState(initialBodyPart);
+  const [exerciseName, setExerciseName] = useState(initialExerciseName);
+  const [feel,         setFeel]         = useState(initialFeel);
+  const [sets,         setSets]         = useState(initialSets);
+  const [planDayLabel, setPlanDayLabel] = useState(entry?.planDayLabel ?? prefill?.planDayLabel ?? '');
+  const [safetyChecks, setSafetyChecks] = useState(() => ({
+    ...emptySafetyChecks(),
+    ...(entry?.safetyChecks || {}),
+  }));
+  const [safetyOpen, setSafetyOpen] = useState(!isEdit); // expanded for new entries, collapsed for edits
   const [saving,      setSaving]      = useState(false);
   const [history,     setHistory]     = useState(null);
   const [histLoading, setHistLoading] = useState(false);
   const [exercises,   setExercises]   = useState([]);
   const [exLoading,   setExLoading]   = useState(false);
 
+  // Skip the initial body-part effect if exerciseName came pre-populated from
+  // edit/prefill — otherwise it would get cleared the moment exercises load.
+  const skipInitialBodyPartReset = useRef(!!initialExerciseName);
+
   // Load exercises when body part changes
   useEffect(() => {
     if (!bodyPart) { setExercises([]); setExerciseName(''); return; }
     setExLoading(true);
-    setExerciseName('');
-    setHistory(null);
+    if (skipInitialBodyPartReset.current) {
+      skipInitialBodyPartReset.current = false;
+    } else {
+      setExerciseName('');
+      setHistory(null);
+    }
     fetchExerciseList(bodyPart).then(list => {
       setExercises(list);
       setExLoading(false);
     });
   }, [bodyPart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If editing, load exercise list for the pre-selected body part once
+  // Load history for pre-populated exercise (edit OR plan-driven prefill).
   useEffect(() => {
-    if (isEdit && entry.bodyPart) {
-      fetchExerciseList(entry.bodyPart).then(list => {
-        setExercises(list);
-      });
-      if (entry.exerciseName) loadHistory(entry.exerciseName);
-    }
+    if (initialExerciseName) loadHistory(initialExerciseName);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadHistory(name) {
@@ -82,12 +113,20 @@ export default function GymEntryModal({ date, entry, fetchExerciseList, fetchExe
           reps:   Number(s.reps)   || 0,
           weight: Number(s.weight) || 0,
         })),
+        planDayLabel: planDayLabel || '',
+        safetyChecks,
       });
       onClose();
     } finally {
       setSaving(false);
     }
   }
+
+  function toggleSafety(key) {
+    setSafetyChecks(prev => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  const safetyDoneCount = SAFETY_ITEMS.filter(i => safetyChecks[i.key]).length;
 
   function handleBackdrop(e) {
     if (e.target === e.currentTarget) onClose();
@@ -108,6 +147,41 @@ export default function GymEntryModal({ date, entry, fetchExerciseList, fetchExe
         </div>
 
         <div className="px-5 py-4 space-y-5">
+          {planDayLabel && (
+            <div className="-mt-1 px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700 font-medium">
+              From plan: {planDayLabel}
+            </div>
+          )}
+
+          {/* Safety self-check */}
+          <div className="border border-slate-200 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setSafetyOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                <ShieldCheck size={14} className="text-emerald-500" />
+                Form check
+              </span>
+              <span className="text-xs text-slate-500">{safetyDoneCount}/{SAFETY_ITEMS.length}</span>
+            </button>
+            {safetyOpen && (
+              <div className="px-4 py-3 space-y-2">
+                {SAFETY_ITEMS.map(({ key, label }) => (
+                  <label key={key} className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!safetyChecks[key]}
+                      onChange={() => toggleSafety(key)}
+                      className="mt-0.5 w-4 h-4 accent-violet-600 cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-700 leading-snug">{label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Body part grid */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Body part</p>

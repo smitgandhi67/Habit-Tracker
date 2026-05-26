@@ -7,7 +7,7 @@ router.get('/batch', async (req, res) => {
   try {
     const { dates } = req.query;
     if (!dates) return res.status(400).json({ error: 'dates query param required' });
-    const dateList = dates.split(',').slice(0, 60); // max 60 days
+    const dateList = dates.split(',').slice(0, 200); // max 200 days (monthly habits need ~6mo lookback)
     const logs = await HabitLog.find({ userId: req.user._id, date: { $in: dateList } });
     res.json(logs);
   } catch (err) {

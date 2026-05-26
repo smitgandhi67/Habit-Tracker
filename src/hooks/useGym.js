@@ -1,7 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { format, startOfWeek } from 'date-fns';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import {
+  listPlans, createPlan, updatePlan, archivePlan, unarchivePlan,
+} from '../lib/plans';
+
+const ACTIVE_PLAN_LS_KEY = (userId) => `gym:activePlanId:${userId}`;
 
 export const BODY_PARTS = [
   { key: 'chest',     label: 'Chest',      emoji: '💪' },
@@ -21,10 +27,105 @@ export const FEEL_OPTIONS = [
 ];
 
 export function useGym() {
+  const { user } = useAuth() || {};
+  const userId   = user?._id;
+
   const [entries,    setEntries]    = useState([]);
   const [weekData,   setWeekData]   = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [weekLoading, setWeekLoading] = useState(false);
+
+  // Workout plans state
+  const [plans,         setPlans]         = useState([]);
+  const [plansLoaded,   setPlansLoaded]   = useState(false);
+  const [activePlanId, setActivePlanIdState] = useState(() => {
+    if (typeof window === 'undefined' || !userId) return null;
+    return window.localStorage.getItem(ACTIVE_PLAN_LS_KEY(userId));
+  });
+
+  // Load plans once authenticated; auto-select master plan if none chosen.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    listPlans()
+      .then(data => {
+        if (cancelled) return;
+        setPlans(data);
+        setPlansLoaded(true);
+        const stored = window.localStorage.getItem(ACTIVE_PLAN_LS_KEY(userId));
+        const stillExists = stored && data.some(p => p._id === stored);
+        if (!stillExists) {
+          const master = data.find(p => p.isMaster);
+          const fallback = master?._id || data[0]?._id || null;
+          setActivePlanIdState(fallback);
+          if (fallback) window.localStorage.setItem(ACTIVE_PLAN_LS_KEY(userId), fallback);
+          else window.localStorage.removeItem(ACTIVE_PLAN_LS_KEY(userId));
+        } else {
+          setActivePlanIdState(stored);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPlansLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const setActivePlanId = useCallback((id) => {
+    setActivePlanIdState(id);
+    if (!userId) return;
+    if (id) window.localStorage.setItem(ACTIVE_PLAN_LS_KEY(userId), id);
+    else    window.localStorage.removeItem(ACTIVE_PLAN_LS_KEY(userId));
+  }, [userId]);
+
+  const activePlan = useMemo(
+    () => plans.find(p => p._id === activePlanId) || null,
+    [plans, activePlanId]
+  );
+
+  const refetchPlans = useCallback(async () => {
+    try {
+      const data = await listPlans();
+      setPlans(data);
+      return data;
+    } catch (err) {
+      toast.error('Failed to refresh plans');
+      throw err;
+    }
+  }, []);
+
+  const createNewPlan = useCallback(async (body) => {
+    const created = await createPlan(body);
+    setPlans(prev => [...prev, created]);
+    setActivePlanId(created._id);
+    return created;
+  }, [setActivePlanId]);
+
+  const updateExistingPlan = useCallback(async (id, body) => {
+    const updated = await updatePlan(id, body);
+    setPlans(prev => prev.map(p => p._id === id ? updated : p));
+    return updated;
+  }, []);
+
+  const archiveExistingPlan = useCallback(async (id) => {
+    await archivePlan(id);
+    setPlans(prev => prev.filter(p => p._id !== id));
+    if (activePlanId === id) {
+      const next = plans.find(p => p._id !== id);
+      setActivePlanId(next?._id || null);
+    }
+  }, [plans, activePlanId, setActivePlanId]);
+
+  const unarchiveExistingPlan = useCallback(async (id) => {
+    const restored = await unarchivePlan(id);
+    setPlans(prev => {
+      const idx = prev.findIndex(p => p._id === id);
+      if (idx === -1) return [...prev, restored];
+      const next = prev.slice();
+      next[idx] = restored;
+      return next;
+    });
+    return restored;
+  }, []);
 
   const loadEntries = useCallback(async (date) => {
     setLoading(true);
@@ -87,10 +188,17 @@ export function useGym() {
     }
   }, []);
 
-  const addExerciseTemplate = useCallback(async (name, bodyPart) => {
+  const addExerciseTemplate = useCallback(async (name, bodyPart, videoUrl) => {
     return await apiFetch('/api/gym/exercises-list', {
       method: 'POST',
-      body: JSON.stringify({ name, bodyPart }),
+      body: JSON.stringify({ name, bodyPart, videoUrl: videoUrl || '' }),
+    });
+  }, []);
+
+  const updateExerciseTemplate = useCallback(async (id, { videoUrl }) => {
+    return await apiFetch(`/api/gym/exercises-list/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ videoUrl: videoUrl || '' }),
     });
   }, []);
 
@@ -125,8 +233,13 @@ export function useGym() {
     entries, weekData, loading, weekLoading,
     loadEntries, loadWeek,
     fetchExerciseHistory, fetchExerciseNames,
-    fetchExerciseList, addExerciseTemplate, deleteExerciseTemplate,
+    fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate,
     addEntry, updateEntry, deleteEntry,
     fetchProgress,
+    // Plans
+    plans, plansLoaded, activePlanId, activePlan,
+    setActivePlanId, refetchPlans,
+    createPlan: createNewPlan, updatePlan: updateExistingPlan,
+    archivePlan: archiveExistingPlan, unarchivePlan: unarchiveExistingPlan,
   };
 }

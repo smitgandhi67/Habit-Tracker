@@ -4,6 +4,7 @@ const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const requireAuth = require('../middleware/auth');
+const { ADMIN_EMAIL } = require('../utils/auth');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -43,15 +44,62 @@ router.post('/verify', async (req, res) => {
       email: user.email,
       name: user.name,
       photo: user.photo,
+      timezone: user.timezone || 'America/New_York',
+      isAdmin: user.email === ADMIN_EMAIL,
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid Google token' });
   }
 });
 
-// GET /api/auth/me — returns current user from JWT cookie
-router.get('/me', requireAuth, (req, res) => {
-  res.json(req.user);
+// GET /api/auth/me — returns current user (fresh DB doc so timezone is current)
+router.get('/me', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      photo: user.photo,
+      timezone: user.timezone || 'America/New_York',
+      isAdmin: user.email === ADMIN_EMAIL,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// IANA timezone format check — keep loose; rely on Intl runtime for full validation.
+const IANA_TZ = /^[A-Za-z_+\-]+(?:\/[A-Za-z0-9_+\-]+){0,3}$/;
+function isValidIanaTz(tz) {
+  if (typeof tz !== 'string' || !IANA_TZ.test(tz)) return false;
+  try {
+    // Intl will throw on a fully unknown zone.
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// PUT /api/auth/timezone — body: { timezone: 'America/New_York' }
+router.put('/timezone', requireAuth, async (req, res) => {
+  try {
+    const { timezone } = req.body || {};
+    if (!isValidIanaTz(timezone)) {
+      return res.status(400).json({ error: 'Invalid IANA timezone' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { timezone },
+      { new: true }
+    ).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ timezone: user.timezone });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/auth/logout

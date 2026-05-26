@@ -2,6 +2,7 @@ const express   = require('express');
 const router    = express.Router();
 const GymEntry  = require('../models/GymEntry');
 const Exercise  = require('../models/Exercise');
+const { requireAdmin } = require('../utils/auth');
 
 // All routes protected by requireAuth (applied in index.js)
 
@@ -55,7 +56,7 @@ router.get('/week', async (req, res) => {
 
     const entries = await GymEntry.find(
       { userId: req.user._id, date: { $in: dates } }
-    ).select('date bodyPart exerciseName');
+    ).select('date bodyPart exerciseName planDayLabel');
     res.json(entries);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -96,8 +97,13 @@ router.get('/exercises', async (req, res) => {
 // POST /api/gym/entries
 router.post('/entries', async (req, res) => {
   try {
-    const { date, bodyPart, exerciseName, feel, sets } = req.body;
-    const entry = new GymEntry({ userId: req.user._id, date, bodyPart, exerciseName, feel, sets });
+    const { date, bodyPart, exerciseName, feel, sets, planDayLabel, safetyChecks } = req.body;
+    const entry = new GymEntry({
+      userId: req.user._id,
+      date, bodyPart, exerciseName, feel, sets,
+      planDayLabel: planDayLabel || '',
+      safetyChecks: safetyChecks || {},
+    });
     await checkAndMarkPR(entry, req.user._id);
     await entry.save();
     res.status(201).json(entry);
@@ -112,11 +118,13 @@ router.put('/entries/:id', async (req, res) => {
     const entry = await GymEntry.findOne({ _id: req.params.id, userId: req.user._id });
     if (!entry) return res.status(404).json({ error: 'Entry not found' });
 
-    const { bodyPart, exerciseName, feel, sets } = req.body;
+    const { bodyPart, exerciseName, feel, sets, planDayLabel, safetyChecks } = req.body;
     if (bodyPart)     entry.bodyPart     = bodyPart;
     if (exerciseName) entry.exerciseName = exerciseName;
     if (feel)         entry.feel         = feel;
     if (sets)         entry.sets         = sets;
+    if (planDayLabel !== undefined) entry.planDayLabel = planDayLabel;
+    if (safetyChecks !== undefined) entry.safetyChecks = safetyChecks;
 
     await checkAndMarkPR(entry, req.user._id);
     await entry.save();
@@ -151,12 +159,23 @@ router.get('/exercises-list', async (req, res) => {
   }
 });
 
+function validVideoUrl(v) {
+  if (v === undefined || v === null || v === '') return true;
+  return typeof v === 'string' && /^https?:\/\/\S+/i.test(v.trim());
+}
+
 // POST /api/gym/exercises-list — anyone can add; userId stored for audit
 router.post('/exercises-list', async (req, res) => {
   try {
-    const { name, bodyPart } = req.body;
+    const { name, bodyPart, videoUrl } = req.body;
     if (!name || !bodyPart) return res.status(400).json({ error: 'name and bodyPart required' });
-    const ex = await Exercise.create({ userId: req.user._id, name: name.trim(), bodyPart });
+    if (!validVideoUrl(videoUrl)) return res.status(400).json({ error: 'videoUrl must be a valid http(s) URL' });
+    const ex = await Exercise.create({
+      userId: req.user._id,
+      name: name.trim(),
+      bodyPart,
+      videoUrl: (videoUrl || '').trim(),
+    });
     res.status(201).json(ex);
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: 'Exercise already exists for this body part' });
@@ -164,12 +183,27 @@ router.post('/exercises-list', async (req, res) => {
   }
 });
 
-// DELETE /api/gym/exercises-list/:id — admin only
-router.delete('/exercises-list/:id', async (req, res) => {
+// PUT /api/gym/exercises-list/:id — update videoUrl (and only videoUrl).
+// Anyone can update since exercise list is shared. Name/bodyPart immutable here.
+router.put('/exercises-list/:id', async (req, res) => {
   try {
-    if (req.user.email !== 'amitgandhi23@gmail.com') {
-      return res.status(403).json({ error: 'Not authorised' });
-    }
+    const { videoUrl } = req.body;
+    if (!validVideoUrl(videoUrl)) return res.status(400).json({ error: 'videoUrl must be a valid http(s) URL' });
+    const ex = await Exercise.findByIdAndUpdate(
+      req.params.id,
+      { videoUrl: (videoUrl || '').trim() },
+      { new: true, runValidators: true }
+    );
+    if (!ex) return res.status(404).json({ error: 'Not found' });
+    res.json(ex);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/gym/exercises-list/:id — admin only
+router.delete('/exercises-list/:id', requireAdmin, async (req, res) => {
+  try {
     const ex = await Exercise.findByIdAndDelete(req.params.id);
     if (!ex) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Deleted' });

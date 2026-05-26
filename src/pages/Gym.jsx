@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { format, addDays, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Trophy, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Trophy, Settings, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useGym, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +9,7 @@ import WeeklyCoverage from '../components/WeeklyCoverage';
 import GymEntryModal from '../components/GymEntryModal';
 import ManageExercisesModal from '../components/ManageExercisesModal';
 import ExerciseProgress from '../components/ExerciseProgress';
-import WeeklyExerciseStatus from '../components/WeeklyExerciseStatus';
+import PlanTab from '../components/PlanTab';
 
 function bodyPartLabel(key) {
   return BODY_PARTS.find(b => b.key === key)?.label ?? key;
@@ -32,13 +33,15 @@ export default function Gym() {
   const [tab,        setTab]        = useState('log');
 
   const { user } = useAuth();
-  const isAdmin = user?.email === 'amitgandhi23@gmail.com';
+  const isAdmin = !!user?.isAdmin;
+
+  const [prefill, setPrefill] = useState(null);
 
   const {
     entries, weekData, loading, weekLoading,
     loadEntries, loadWeek,
     fetchExerciseHistory,
-    fetchExerciseList, addExerciseTemplate, deleteExerciseTemplate,
+    fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate,
     addEntry, updateEntry, deleteEntry,
   } = useGym();
 
@@ -53,9 +56,10 @@ export default function Gym() {
   function nextDay() { setDate(d => addDays(d, 1)); }
   function goToday() { setDate(new Date()); }
 
-  function openAdd()       { setEditEntry(null); setModalOpen(true); }
-  function openEdit(entry) { setEditEntry(entry); setModalOpen(true); }
-  function closeModal()    { setModalOpen(false); setEditEntry(null); }
+  function openAdd()       { setEditEntry(null); setPrefill(null); setModalOpen(true); }
+  function openEdit(entry) { setEditEntry(entry); setPrefill(null); setModalOpen(true); }
+  function openFromPlan(p) { setEditEntry(null); setPrefill(p); setModalOpen(true); }
+  function closeModal()    { setModalOpen(false); setEditEntry(null); setPrefill(null); }
 
   async function handleSave(payload) {
     try {
@@ -109,6 +113,13 @@ export default function Gym() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <Link
+            to="/gym/coaching"
+            className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+            title="Coaching guide"
+          >
+            <BookOpen size={20} className="text-slate-500" />
+          </Link>
           <button
             onClick={() => setManageOpen(true)}
             className="p-2 rounded-full hover:bg-slate-100 transition-colors"
@@ -124,7 +135,7 @@ export default function Gym() {
 
       {/* Tab bar */}
       <div className="flex border-b border-slate-200 mb-4">
-        {[['log', 'Log'], ['week', 'This Week'], ['progress', 'Progress']].map(([key, label]) => (
+        {[['log', 'Log'], ['plan', 'Plan'], ['progress', 'Progress']].map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -141,8 +152,8 @@ export default function Gym() {
 
       {tab === 'progress' ? (
         <ExerciseProgress />
-      ) : tab === 'week' ? (
-        <WeeklyExerciseStatus weekData={weekData} />
+      ) : tab === 'plan' ? (
+        <PlanTab weekData={weekData} onOpenEntry={openFromPlan} />
       ) : (
         <>
           {/* Weekly coverage */}
@@ -227,6 +238,7 @@ export default function Gym() {
         <GymEntryModal
           date={dateKey}
           entry={editEntry}
+          prefill={prefill}
           fetchExerciseList={fetchExerciseList}
           fetchExerciseHistory={fetchExerciseHistory}
           onSave={handleSave}
@@ -239,6 +251,7 @@ export default function Gym() {
         <ManageExercisesModal
           fetchExerciseList={fetchExerciseList}
           addExerciseTemplate={addExerciseTemplate}
+          updateExerciseTemplate={updateExerciseTemplate}
           deleteExerciseTemplate={deleteExerciseTemplate}
           onClose={() => setManageOpen(false)}
           isAdmin={isAdmin}

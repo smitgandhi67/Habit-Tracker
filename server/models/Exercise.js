@@ -8,6 +8,8 @@ const exerciseSchema = new mongoose.Schema({
     required: true,
     enum: ['chest', 'back', 'shoulders', 'arms', 'legs', 'core', 'cardio', 'full_body'],
   },
+  // Optional tutorial/demo link (YouTube etc.). Free-form; UI validates loosely.
+  videoUrl: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
 // Global unique: one entry per (name, bodyPart) across all users

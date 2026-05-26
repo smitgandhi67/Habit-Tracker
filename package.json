@@ -17,6 +17,7 @@
     "@emoji-mart/react": "^1.1.1",
     "@react-oauth/google": "^0.13.5",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "emoji-mart": "^5.6.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",

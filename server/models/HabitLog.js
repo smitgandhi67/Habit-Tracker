@@ -13,5 +13,7 @@ const habitLogSchema = new mongoose.Schema({
 });
 
 habitLogSchema.index({ habitId: 1, date: 1 }, { unique: true });
+// Batch fetch path: /api/logs/batch?dates=... filters by userId + date $in.
+habitLogSchema.index({ userId: 1, date: 1 });
 
 module.exports = mongoose.model('HabitLog', habitLogSchema);
