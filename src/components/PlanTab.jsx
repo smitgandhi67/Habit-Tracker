@@ -1,19 +1,37 @@
 import { useState, useEffect, useMemo } from 'react';
-import { startOfWeek, format, addDays } from 'date-fns';
-import { Play, Pencil, Plus, CheckCircle2, Circle } from 'lucide-react';
+import { Play, Pencil, Plus, CheckCircle2, Circle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useGym, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
 import PlanEditor from './PlanEditor';
-
-const DAY_LABEL = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function bodyPartEmoji(key) {
   return BODY_PARTS.find(b => b.key === key)?.emoji ?? '';
 }
 
-function getThisWeekDates() {
-  const mon = startOfWeek(new Date(), { weekStartsOn: 1 });
-  return Array.from({ length: 7 }, (_, i) => format(addDays(mon, i), 'yyyy-MM-dd'));
+function bodyPartLabel(key) {
+  return BODY_PARTS.find(b => b.key === key)?.label ?? key;
+}
+
+// Returns one row per unique exerciseName across all plan days.
+// Carries the first occurrence's prefill (sets / reps / planDayLabel).
+function uniquePlannedExercises(plan) {
+  const out = [];
+  const seen = new Set();
+  for (const day of plan?.days || []) {
+    for (const ex of day.exercises || []) {
+      if (!ex.exerciseName || seen.has(ex.exerciseName)) continue;
+      seen.add(ex.exerciseName);
+      out.push({
+        bodyPart:     ex.bodyPart,
+        exerciseName: ex.exerciseName,
+        sets:         ex.sets,
+        repsMin:      ex.repsMin,
+        repsMax:      ex.repsMax,
+        planDayLabel: day.label,
+      });
+    }
+  }
+  return out;
 }
 
 export default function PlanTab({ weekData, onOpenEntry }) {
@@ -50,19 +68,21 @@ export default function PlanTab({ weekData, onOpenEntry }) {
 
   const selectedDay = activePlan?.days?.find(d => d.label === selectedDayLabel) || null;
 
-  // Week grid: which plan days have a logged session with matching planDayLabel?
-  const weekDates = getThisWeekDates();
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const dayLabelToDates = useMemo(() => {
-    const map = {};
-    for (const entry of weekData) {
-      if (!entry.planDayLabel || !weekDates.includes(entry.date)) continue;
-      const idx = weekDates.indexOf(entry.date);
-      if (!map[entry.planDayLabel]) map[entry.planDayLabel] = new Set();
-      map[entry.planDayLabel].add(DAY_LABEL[idx]);
+  // This-week per-exercise tracking: which planned exercises have been logged?
+  const plannedExercises = useMemo(() => uniquePlannedExercises(activePlan), [activePlan]);
+  const doneExerciseNames = useMemo(
+    () => new Set((weekData || []).map(e => e.exerciseName).filter(Boolean)),
+    [weekData],
+  );
+  const { doneExercises, pendingExercises } = useMemo(() => {
+    const done = [];
+    const pending = [];
+    for (const ex of plannedExercises) {
+      if (doneExerciseNames.has(ex.exerciseName)) done.push(ex);
+      else pending.push(ex);
     }
-    return map;
-  }, [weekData, weekDates]);
+    return { doneExercises: done, pendingExercises: pending };
+  }, [plannedExercises, doneExerciseNames]);
 
   if (!plansLoaded) {
     return (
@@ -186,52 +206,96 @@ export default function PlanTab({ weekData, onOpenEntry }) {
         </div>
       )}
 
-      {/* Week grid: plan day vs done */}
-      {activePlan && activePlan.days?.length > 0 && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">This week</p>
-          <div className="flex gap-1 mb-3 px-1">
-            {DAY_LABEL.map((d, i) => (
-              <div
-                key={d}
-                className={`flex-1 text-center text-xs font-medium rounded-lg py-1 ${
-                  weekDates[i] === today
-                    ? 'bg-violet-100 text-violet-700'
-                    : weekDates[i] < today
-                    ? 'text-slate-500'
-                    : 'text-slate-300'
-                }`}
-              >
-                {d}
-              </div>
-            ))}
-          </div>
-          <div className="space-y-2">
-            {activePlan.days.map(d => {
-              const doneDays = dayLabelToDates[d.label];
-              const done = !!doneDays && doneDays.size > 0;
-              return (
-                <div key={d.label} className="flex items-center gap-2">
-                  {done
-                    ? <CheckCircle2 size={16} className="text-green-500 shrink-0" />
-                    : <Circle size={16} className="text-slate-300 shrink-0" />
-                  }
-                  <span className={`text-sm flex-1 ${done ? 'text-slate-700' : 'text-slate-400'}`}>
-                    {d.label}{d.focus ? ` · ${d.focus}` : ''}
-                  </span>
-                  {done && (
-                    <span className="text-xs text-green-600 font-medium">
-                      {[...doneDays].join(', ')}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* This week — per-exercise Done / Pending */}
+      {activePlan && plannedExercises.length > 0 && (
+        <ThisWeekExercises
+          done={doneExercises}
+          pending={pendingExercises}
+          onOpenPending={onOpenEntry}
+        />
       )}
 
       {editorOpen && <PlanEditor isAdmin={isAdmin} onClose={() => setEditorOpen(false)} />}
     </div>
+  );
+}
+
+function ThisWeekExercises({ done, pending, onOpenPending }) {
+  const [pendingOpen, setPendingOpen] = useState(true);
+  const [doneOpen, setDoneOpen] = useState(false);
+  const total = done.length + pending.length;
+  const allCaughtUp = pending.length === 0;
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+      <div className="flex items-baseline justify-between mb-3">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">This week</p>
+        <p className="text-xs font-semibold text-slate-600">{done.length} / {total} done</p>
+      </div>
+
+      <SectionHeader
+        label={allCaughtUp ? 'Pending (0) — all caught up 🎉' : `Pending (${pending.length}) — catch up`}
+        open={pendingOpen && pending.length > 0}
+        onToggle={() => setPendingOpen(v => !v)}
+        disabled={pending.length === 0}
+        tone="amber"
+      />
+      {pendingOpen && pending.length > 0 && (
+        <ul className="mt-2 mb-3 space-y-1">
+          {pending.map(ex => (
+            <li key={ex.exerciseName}>
+              <button
+                type="button"
+                onClick={() => onOpenPending?.(ex)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-amber-50 transition-colors text-left"
+              >
+                <Circle size={16} className="text-amber-400 shrink-0" />
+                <span className="text-sm shrink-0">{bodyPartEmoji(ex.bodyPart)}</span>
+                <span className="text-sm text-slate-700 flex-1 truncate">{ex.exerciseName}</span>
+                <span className="text-xs text-slate-400 shrink-0">{bodyPartLabel(ex.bodyPart)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <SectionHeader
+        label={`Done (${done.length})`}
+        open={doneOpen && done.length > 0}
+        onToggle={() => setDoneOpen(v => !v)}
+        disabled={done.length === 0}
+        tone="green"
+      />
+      {doneOpen && done.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {done.map(ex => (
+            <li key={ex.exerciseName} className="flex items-center gap-2 px-2 py-1.5">
+              <CheckCircle2 size={16} className="text-green-500 shrink-0" />
+              <span className="text-sm shrink-0">{bodyPartEmoji(ex.bodyPart)}</span>
+              <span className="text-sm text-slate-700 flex-1 truncate">{ex.exerciseName}</span>
+              <span className="text-xs text-slate-400 shrink-0">{bodyPartLabel(ex.bodyPart)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ label, open, onToggle, disabled, tone }) {
+  const toneCls = tone === 'amber' ? 'text-amber-700' : 'text-green-700';
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      className={`w-full flex items-center gap-1.5 py-1 ${disabled ? 'opacity-60 cursor-default' : 'hover:opacity-80'}`}
+    >
+      {!disabled && (open
+        ? <ChevronUp size={14} className="text-slate-400" />
+        : <ChevronDown size={14} className="text-slate-400" />
+      )}
+      <span className={`text-xs font-semibold ${toneCls}`}>{label}</span>
+    </button>
   );
 }
