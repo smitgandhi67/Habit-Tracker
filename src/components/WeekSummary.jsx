@@ -1,5 +1,6 @@
 import { startOfWeek } from 'date-fns';
 import { useHabitsContext } from '../hooks/useHabits';
+import { isPeriodFrequency, targetTimesPerPeriod } from '../lib/frequency';
 
 function getWeekDates(mondayOffset) {
   const today = new Date();
@@ -17,6 +18,19 @@ function getWeekDates(mondayOffset) {
 }
 
 function weekStats(habit, dates, habitsForDate, getStatus) {
+  // Weekly period cadence: target = times/week, completed = unique done-days in week (capped).
+  if (isPeriodFrequency(habit.frequency) && habit.frequency.type === 'weekly') {
+    const target    = targetTimesPerPeriod(habit);
+    const doneDays  = dates.filter(d => {
+      const s = getStatus(habit._id, d);
+      return s === 'done' || s === 'half_done';
+    }).length;
+    const completed = Math.min(doneDays, target);
+    const rate      = target === 0 ? null : Math.round((completed / target) * 100);
+    return { completed, scheduled: target, rate };
+  }
+
+  // Daily / specific-days: scheduled = days the habit was due that week.
   const scheduled = dates.filter(d => habitsForDate(d).some(h => h._id === habit._id));
   const completed = scheduled.filter(d => {
     const s = getStatus(habit._id, d);
@@ -24,6 +38,15 @@ function weekStats(habit, dates, habitsForDate, getStatus) {
   });
   const rate = scheduled.length === 0 ? null : Math.round((completed.length / scheduled.length) * 100);
   return { completed: completed.length, scheduled: scheduled.length, rate };
+}
+
+// Biweekly/monthly cadences don't fit a single-week window; exclude them from the weekly comparison.
+function eligibleForWeeklyView(habit) {
+  const f = habit.frequency;
+  if (f && typeof f === 'object' && !Array.isArray(f)) {
+    return f.type === 'weekly';
+  }
+  return true;
 }
 
 function BarRow({ label, stats, isThis }) {
@@ -52,6 +75,7 @@ export default function WeekSummary() {
   const lastWeekDates = getWeekDates(-1);
 
   const habitData = habits
+    .filter(eligibleForWeeklyView)
     .map(habit => {
       const thisWeek = weekStats(habit, thisWeekDates, habitsForDate, getStatus);
       const lastWeek = weekStats(habit, lastWeekDates, habitsForDate, getStatus);

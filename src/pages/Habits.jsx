@@ -17,12 +17,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { useHabitsContext } from '../hooks/useHabits';
 import HabitModal from '../components/HabitModal';
 import { HabitListSkeleton } from '../components/Skeleton';
+import { formatFrequency } from '../lib/frequency';
 
-function freqLabel(freq) {
-  if (freq === 'daily') return 'Every day';
-  if (Array.isArray(freq) && freq.length > 0) return freq.join(' · ');
-  return '';
-}
+const freqLabel = formatFrequency;
 
 function SortableHabit({ habit, onEdit, onDelete, deleting }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit._id });
