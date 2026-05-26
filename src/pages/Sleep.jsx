@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useSleep } from '../hooks/useSleep';
-import { groupByNight, elapsedMs, formatDuration } from '../lib/sleepNight';
+import { groupByNight, elapsedMs, formatDuration, nightDateFor } from '../lib/sleepNight';
 import SleepActiveCard from '../components/SleepActiveCard';
 import SleepNightCard from '../components/SleepNightCard';
 import SleepSessionModal from '../components/SleepSessionModal';
@@ -30,7 +30,13 @@ export default function Sleep() {
     [sessions, nightsByDate],
   );
 
-  const tonight = grouped[0] && grouped[0].isActive ? grouped[0] : null;
+  const tonightDate = useMemo(() => {
+    try { return nightDateFor(new Date()); } catch { return null; }
+  }, []);
+  const tonight = useMemo(
+    () => grouped.find(g => g.nightDate === tonightDate) || null,
+    [grouped, tonightDate],
+  );
   const staleActive = active && (Date.now() - new Date(active.startAt).getTime()) > STALE_MS;
 
   async function handleStart() {

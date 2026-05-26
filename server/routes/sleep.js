@@ -136,12 +136,11 @@ router.put('/sessions/:id', async (req, res, next) => {
     }
     if (endAt !== undefined) {
       if (endAt === null) {
-        newEnd = null;
-      } else {
-        const d = parseDate(endAt);
-        if (!d) return res.status(400).json({ error: 'endAt must be a valid date' });
-        newEnd = d;
+        return res.status(400).json({ error: 'endAt cannot be cleared; delete the session instead' });
       }
+      const d = parseDate(endAt);
+      if (!d) return res.status(400).json({ error: 'endAt must be a valid date' });
+      newEnd = d;
     }
     if (newEnd && newEnd <= newStart) {
       return res.status(400).json({ error: 'endAt must be after startAt' });
