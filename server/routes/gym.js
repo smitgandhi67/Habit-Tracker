@@ -3,6 +3,12 @@ const router    = express.Router();
 const GymEntry  = require('../models/GymEntry');
 const Exercise  = require('../models/Exercise');
 const { requireAdmin } = require('../utils/auth');
+const { normalizeExerciseName } = require('../utils/exerciseName');
+
+const BODY_PART_LABEL = {
+  chest: 'Chest', back: 'Back', shoulders: 'Shoulders', arms: 'Arms',
+  legs: 'Legs', core: 'Core', cardio: 'Cardio', full_body: 'Full Body',
+};
 
 // All routes protected by requireAuth (applied in index.js)
 
@@ -170,15 +176,24 @@ router.post('/exercises-list', async (req, res) => {
     const { name, bodyPart, videoUrl } = req.body;
     if (!name || !bodyPart) return res.status(400).json({ error: 'name and bodyPart required' });
     if (!validVideoUrl(videoUrl)) return res.status(400).json({ error: 'videoUrl must be a valid http(s) URL' });
+
+    const trimmedName = name.trim();
+    const nameKey = normalizeExerciseName(trimmedName);
+    const existing = await Exercise.findOne({ nameKey });
+    if (existing) {
+      const where = BODY_PART_LABEL[existing.bodyPart] || existing.bodyPart;
+      return res.status(409).json({ error: `Exercise '${existing.name}' already exists in ${where}` });
+    }
+
     const ex = await Exercise.create({
       userId: req.user._id,
-      name: name.trim(),
+      name: trimmedName,
       bodyPart,
       videoUrl: (videoUrl || '').trim(),
     });
     res.status(201).json(ex);
   } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ error: 'Exercise already exists for this body part' });
+    if (err.code === 11000) return res.status(409).json({ error: 'Exercise already exists' });
     res.status(400).json({ error: err.message });
   }
 });

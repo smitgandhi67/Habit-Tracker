@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, Play, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BODY_PARTS } from '../hooks/useGym';
+import { normalizeExerciseName } from '../lib/exerciseName';
 
 export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate, onClose, isAdmin }) {
   const [selectedPart, setSelectedPart] = useState(BODY_PARTS[0].key);
   const [exercises,    setExercises]    = useState([]);
+  const [allExercises, setAllExercises] = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [newName,      setNewName]      = useState('');
   const [newVideo,     setNewVideo]     = useState('');
@@ -19,6 +21,18 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
     load(selectedPart);
   }, [selectedPart]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    fetchExerciseList().then(setAllExercises);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nameKeyMap = useMemo(() => {
+    const map = {};
+    for (const ex of allExercises) {
+      map[normalizeExerciseName(ex.name)] = ex.bodyPart;
+    }
+    return map;
+  }, [allExercises]);
+
   async function load(bp) {
     setLoading(true);
     const list = await fetchExerciseList(bp);
@@ -29,11 +43,23 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
   async function handleAdd() {
     const name = newName.trim();
     if (!name) return;
+
+    const key = normalizeExerciseName(name);
+    const conflictPart = nameKeyMap[key];
+    if (conflictPart) {
+      const label = BODY_PARTS.find(b => b.key === conflictPart)?.label || conflictPart;
+      setError(`'${name}' already exists in ${label}`);
+      return;
+    }
+
     setAdding(true);
     setError('');
     try {
       const ex = await addExerciseTemplate(name, selectedPart, newVideo.trim());
-      setExercises(prev => [...prev, ex].sort((a, b) => a.name.localeCompare(b.name)));
+      if (ex.bodyPart === selectedPart) {
+        setExercises(prev => [...prev, ex].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      setAllExercises(prev => [...prev, ex]);
       setNewName('');
       setNewVideo('');
     } catch (err) {
@@ -46,6 +72,7 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
   async function handleDelete(id) {
     await deleteExerciseTemplate(id);
     setExercises(prev => prev.filter(e => e._id !== id));
+    setAllExercises(prev => prev.filter(e => e._id !== id));
   }
 
   function startEditingUrl(ex) {
