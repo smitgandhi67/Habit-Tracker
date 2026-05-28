@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { usermavenClient } from '../lib/usermaven';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -50,6 +51,19 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!usermavenClient || !user) return;
+    const [first_name, ...rest] = (user.name || '').trim().split(/\s+/);
+    const last_name = rest.join(' ') || undefined;
+    usermavenClient.id({
+      id: String(user._id),
+      email: user.email,
+      ...(user.createdAt && { created_at: user.createdAt }),
+      ...(first_name && { first_name }),
+      ...(last_name && { last_name }),
+    });
+  }, [user]);
+
   const login = useCallback(async (googleCredential) => {
     const res = await fetch(`${BASE}/api/auth/verify`, {
       method: 'POST',
@@ -80,6 +94,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     await fetch(`${BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
+    usermavenClient?.reset?.();
   }, []);
 
   return (

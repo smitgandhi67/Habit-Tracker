@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { UsermavenProvider } from '@usermaven/react';
 import { AuthProvider } from './context/AuthContext';
+import { usermavenClient } from './lib/usermaven';
 import { HabitsContext, useHabits } from './hooks/useHabits';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -45,14 +47,20 @@ function AppInner() {
 }
 
 export default function App() {
+  const tree = (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppInner />
+        <Toaster position="top-center" toastOptions={{ duration: 3500 }} />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppInner />
-          <Toaster position="top-center" toastOptions={{ duration: 3500 }} />
-        </BrowserRouter>
-      </AuthProvider>
+      {usermavenClient
+        ? <UsermavenProvider client={usermavenClient}>{tree}</UsermavenProvider>
+        : tree}
     </GoogleOAuthProvider>
   );
 }
