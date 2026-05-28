@@ -63,13 +63,27 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
+  const updateWeightUnit = useCallback(async (weightUnit) => {
+    if (weightUnit !== 'kg' && weightUnit !== 'lb') return;
+    const res = await fetch(`${BASE}/api/auth/weight-unit`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weightUnit }),
+    });
+    if (!res.ok) throw new Error('Failed to update unit');
+    const { weightUnit: saved } = await res.json();
+    setUser(prev => prev ? { ...prev, weightUnit: saved } : prev);
+    return saved;
+  }, []);
+
   const logout = useCallback(async () => {
     await fetch(`${BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Minus, Trophy, ShieldCheck } from 'lucide-react';
 import { BODY_PARTS, FEEL_OPTIONS } from '../hooks/useGym';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_SET = { reps: '', weight: '' };
 
@@ -22,6 +23,8 @@ function emptySafetyChecks() {
 
 export default function GymEntryModal({ date, entry, prefill, fetchExerciseList, fetchExerciseHistory, onSave, onClose }) {
   const isEdit = !!entry;
+  const { user } = useAuth() || {};
+  const weightUnit = user?.weightUnit || 'lb';
 
   const initialBodyPart     = entry?.bodyPart     ?? prefill?.bodyPart     ?? '';
   const initialExerciseName = entry?.exerciseName ?? prefill?.exerciseName ?? '';
@@ -241,7 +244,7 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
                       <div className="flex flex-wrap gap-1.5">
                         {history.last.sets.map((s, i) => (
                           <span key={i} className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-600">
-                            {s.reps} reps{s.weight ? ` × ${s.weight}kg` : ''}
+                            {s.reps} reps{s.weight ? ` × ${s.weight}${weightUnit}` : ''}
                           </span>
                         ))}
                       </div>
@@ -251,7 +254,7 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
                     <div className="flex items-center gap-1.5">
                       <Trophy size={13} className="text-amber-500" />
                       <p className="text-xs text-amber-700 font-medium">
-                        All-time PR: {history.pr.prWeight}kg on {history.pr.date}
+                        All-time PR: {history.pr.prWeight}{weightUnit} on {history.pr.date}
                       </p>
                     </div>
                   )}
@@ -286,7 +289,7 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
                       step="0.5"
                       value={s.weight}
                       onChange={e => updateSet(i, 'weight', e.target.value)}
-                      placeholder="kg"
+                      placeholder={weightUnit}
                       className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-400"
                     />
                     {sets.length > 1 && (

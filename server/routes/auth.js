@@ -34,7 +34,7 @@ router.post('/verify', async (req, res) => {
     );
 
     const token = jwt.sign(
-      { _id: user._id, email: user.email, name: user.name, photo: user.photo },
+      { _id: user._id, email: user.email, name: user.name, photo: user.photo, createdAt: user.createdAt },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -45,7 +45,9 @@ router.post('/verify', async (req, res) => {
       name: user.name,
       photo: user.photo,
       timezone: user.timezone || 'America/New_York',
+      weightUnit: user.weightUnit || 'lb',
       isAdmin: user.email === ADMIN_EMAIL,
+      createdAt: user.createdAt,
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid Google token' });
@@ -63,7 +65,9 @@ router.get('/me', requireAuth, async (req, res) => {
       name: user.name,
       photo: user.photo,
       timezone: user.timezone || 'America/New_York',
+      weightUnit: user.weightUnit || 'lb',
       isAdmin: user.email === ADMIN_EMAIL,
+      createdAt: user.createdAt,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -97,6 +101,25 @@ router.put('/timezone', requireAuth, async (req, res) => {
     ).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ timezone: user.timezone });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/auth/weight-unit — body: { weightUnit: 'kg' | 'lb' }
+router.put('/weight-unit', requireAuth, async (req, res) => {
+  try {
+    const { weightUnit } = req.body || {};
+    if (weightUnit !== 'kg' && weightUnit !== 'lb') {
+      return res.status(400).json({ error: "weightUnit must be 'kg' or 'lb'" });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { weightUnit },
+      { new: true }
+    ).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ weightUnit: user.weightUnit });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

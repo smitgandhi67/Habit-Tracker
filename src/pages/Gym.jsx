@@ -32,8 +32,18 @@ export default function Gym() {
   const [manageOpen, setManageOpen] = useState(false);
   const [tab,        setTab]        = useState('log');
 
-  const { user } = useAuth();
+  const { user, updateWeightUnit } = useAuth();
   const isAdmin = !!user?.isAdmin;
+  const weightUnit = user?.weightUnit || 'lb';
+
+  async function toggleWeightUnit() {
+    const next = weightUnit === 'kg' ? 'lb' : 'kg';
+    try {
+      await updateWeightUnit(next);
+    } catch {
+      toast.error('Failed to update unit');
+    }
+  }
 
   const [prefill, setPrefill] = useState(null);
 
@@ -121,6 +131,13 @@ export default function Gym() {
             <BookOpen size={20} className="text-slate-500" />
           </Link>
           <button
+            onClick={toggleWeightUnit}
+            className="px-2.5 py-1 rounded-full text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors tabular-nums"
+            title="Toggle weight unit"
+          >
+            {weightUnit}
+          </button>
+          <button
             onClick={() => setManageOpen(true)}
             className="p-2 rounded-full hover:bg-slate-100 transition-colors"
             title="Manage exercises"
@@ -201,7 +218,7 @@ export default function Gym() {
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               {entry.sets.map((s, i) => (
                                 <span key={i} className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-600">
-                                  {s.reps} reps{s.weight ? ` × ${s.weight}kg` : ''}
+                                  {s.reps} reps{s.weight ? ` × ${s.weight}${weightUnit}` : ''}
                                 </span>
                               ))}
                             </div>
