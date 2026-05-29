@@ -32,16 +32,22 @@ function defaultAnchor() {
 
 export default function HabitModal({ habit, onClose }) {
   const { addHabit, updateHabit, hasLogsFor } = useHabitsContext();
-  const anchorLocked = !!habit && habit.frequency?.type === 'biweekly' && hasLogsFor(habit._id);
+  // Read period fields only when frequency is the object form. Reading `.anchor`
+  // off the string 'daily' resolves to String.prototype.anchor — passing that
+  // function into useState lazy-invokes it and throws.
+  const freqObj = habit?.frequency && typeof habit.frequency === 'object' && !Array.isArray(habit.frequency)
+    ? habit.frequency
+    : null;
+  const anchorLocked = !!habit && freqObj?.type === 'biweekly' && hasLogsFor(habit._id);
 
   const [name, setName]         = useState(habit?.name || '');
   const [emoji, setEmoji]       = useState(habit?.emoji || '💪');
   const [showPicker, setShowPicker] = useState(false);
   const [freqType, setFreqType] = useState(initialFreqType(habit));
   const [days, setDays]         = useState(Array.isArray(habit?.frequency) ? habit.frequency : []);
-  const [periodType, setPeriodType]     = useState(habit?.frequency?.type || 'weekly');
-  const [periodTimes, setPeriodTimes]   = useState(habit?.frequency?.times || 1);
-  const [periodAnchor, setPeriodAnchor] = useState(habit?.frequency?.anchor || defaultAnchor());
+  const [periodType, setPeriodType]     = useState(freqObj?.type || 'weekly');
+  const [periodTimes, setPeriodTimes]   = useState(freqObj?.times || 1);
+  const [periodAnchor, setPeriodAnchor] = useState(freqObj?.anchor || defaultAnchor());
   const [hasConfig, setHasConfig] = useState(!!habit?.config?.type);
   const [configLabel, setConfigLabel] = useState(habit?.config?.label || '');
   const [configType, setConfigType]   = useState(habit?.config?.type || 'number');
