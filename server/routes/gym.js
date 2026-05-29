@@ -2,7 +2,7 @@ const express   = require('express');
 const router    = express.Router();
 const GymEntry  = require('../models/GymEntry');
 const Exercise  = require('../models/Exercise');
-const { requireAdmin } = require('../utils/auth');
+const { requireAdmin, isAdmin } = require('../utils/auth');
 const { normalizeExerciseName } = require('../utils/exerciseName');
 
 const BODY_PART_LABEL = {
@@ -198,20 +198,78 @@ router.post('/exercises-list', async (req, res) => {
   }
 });
 
-// PUT /api/gym/exercises-list/:id — update videoUrl (and only videoUrl).
-// Anyone can update since exercise list is shared. Name/bodyPart immutable here.
+// PUT /api/gym/exercises-list/:id
+// - videoUrl: editable by any authenticated user (existing behavior).
+// - name / bodyPart: admin only. Cascades to all GymEntry rows that referenced
+//   the previous name so historical data stays consistent.
+const BODY_PARTS = ['chest','back','shoulders','arms','legs','core','cardio','full_body'];
 router.put('/exercises-list/:id', async (req, res) => {
   try {
-    const { videoUrl } = req.body;
-    if (!validVideoUrl(videoUrl)) return res.status(400).json({ error: 'videoUrl must be a valid http(s) URL' });
-    const ex = await Exercise.findByIdAndUpdate(
-      req.params.id,
-      { videoUrl: (videoUrl || '').trim() },
-      { new: true, runValidators: true }
-    );
+    const { name, bodyPart, videoUrl } = req.body || {};
+    const wantsNameOrBodyPart = name !== undefined || bodyPart !== undefined;
+
+    if (wantsNameOrBodyPart && !isAdmin(req)) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    if (videoUrl !== undefined && !validVideoUrl(videoUrl)) {
+      return res.status(400).json({ error: 'videoUrl must be a valid http(s) URL' });
+    }
+    if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+      return res.status(400).json({ error: 'name must be a non-empty string' });
+    }
+    if (bodyPart !== undefined && !BODY_PARTS.includes(bodyPart)) {
+      return res.status(400).json({ error: `bodyPart must be one of ${BODY_PARTS.join(', ')}` });
+    }
+
+    const ex = await Exercise.findById(req.params.id);
     if (!ex) return res.status(404).json({ error: 'Not found' });
-    res.json(ex);
+
+    const oldName = ex.name;
+    const oldBodyPart = ex.bodyPart;
+    let nameChanged = false;
+    let bodyPartChanged = false;
+
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (trimmed !== ex.name) {
+        const newKey = normalizeExerciseName(trimmed);
+        if (newKey !== ex.nameKey) {
+          const collision = await Exercise.findOne({ nameKey: newKey, _id: { $ne: ex._id } });
+          if (collision) {
+            const where = BODY_PART_LABEL[collision.bodyPart] || collision.bodyPart;
+            return res.status(409).json({ error: `Exercise '${collision.name}' already exists in ${where}` });
+          }
+        }
+        ex.name = trimmed;
+        nameChanged = true;
+      }
+    }
+    if (bodyPart !== undefined && bodyPart !== ex.bodyPart) {
+      ex.bodyPart = bodyPart;
+      bodyPartChanged = true;
+    }
+    if (videoUrl !== undefined) {
+      ex.videoUrl = (videoUrl || '').trim();
+    }
+
+    await ex.save();
+
+    let entriesUpdated = 0;
+    if (nameChanged || bodyPartChanged) {
+      const setOps = {};
+      if (nameChanged)     setOps.exerciseName = ex.name;
+      if (bodyPartChanged) setOps.bodyPart     = ex.bodyPart;
+      // Match historic entries by the OLD name (and old bodyPart when only bodyPart changes,
+      // to avoid retagging unrelated entries that happen to share a name).
+      const filter = { exerciseName: oldName };
+      if (!nameChanged) filter.bodyPart = oldBodyPart;
+      const result = await GymEntry.updateMany(filter, { $set: setOps });
+      entriesUpdated = result.modifiedCount || 0;
+    }
+
+    res.json({ ...ex.toObject(), entriesUpdated });
   } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ error: 'Exercise name already exists' });
     res.status(400).json({ error: err.message });
   }
 });
