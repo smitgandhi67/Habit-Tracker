@@ -271,6 +271,7 @@ export default function Gym() {
           updateExerciseTemplate={updateExerciseTemplate}
           deleteExerciseTemplate={deleteExerciseTemplate}
           onClose={() => setManageOpen(false)}
+          onTemplateEdited={() => { loadEntries(date); loadWeek(date); }}
           isAdmin={isAdmin}
         />
       )}

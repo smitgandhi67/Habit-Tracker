@@ -195,10 +195,11 @@ export function useGym() {
     });
   }, []);
 
-  const updateExerciseTemplate = useCallback(async (id, { videoUrl }) => {
+  const updateExerciseTemplate = useCallback(async (id, body) => {
+    // body may include any subset of { name, bodyPart, videoUrl }.
     return await apiFetch(`/api/gym/exercises-list/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ videoUrl: videoUrl || '' }),
+      body: JSON.stringify(body || {}),
     });
   }, []);
 

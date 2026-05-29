@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Plus, Trash2, Play, Save } from 'lucide-react';
+import { X, Plus, Trash2, Play, Save, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BODY_PARTS } from '../hooks/useGym';
 import { normalizeExerciseName } from '../lib/exerciseName';
 
-export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate, onClose, isAdmin }) {
+export default function ManageExercisesModal({ fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate, onClose, onTemplateEdited, isAdmin }) {
   const [selectedPart, setSelectedPart] = useState(BODY_PARTS[0].key);
   const [exercises,    setExercises]    = useState([]);
   const [allExercises, setAllExercises] = useState([]);
@@ -16,6 +16,11 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
   const [editingId,    setEditingId]    = useState(null);
   const [editingUrl,   setEditingUrl]   = useState('');
   const [savingUrl,    setSavingUrl]    = useState(false);
+  // Admin name/bodyPart edit state.
+  const [metaEditId,     setMetaEditId]    = useState(null);
+  const [metaName,       setMetaName]      = useState('');
+  const [metaBodyPart,   setMetaBodyPart]  = useState('');
+  const [savingMeta,     setSavingMeta]    = useState(false);
 
   useEffect(() => {
     load(selectedPart);
@@ -99,6 +104,47 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
     }
   }
 
+  function startEditingMeta(ex) {
+    setMetaEditId(ex._id);
+    setMetaName(ex.name);
+    setMetaBodyPart(ex.bodyPart);
+  }
+
+  function cancelEditingMeta() {
+    setMetaEditId(null);
+    setMetaName('');
+    setMetaBodyPart('');
+  }
+
+  async function saveMeta(id) {
+    const trimmed = metaName.trim();
+    if (!trimmed) {
+      toast.error('Name required');
+      return;
+    }
+    setSavingMeta(true);
+    try {
+      const updated = await updateExerciseTemplate(id, { name: trimmed, bodyPart: metaBodyPart });
+      // Update full library so collision map stays current.
+      setAllExercises(prev => prev.map(e => e._id === id ? { ...e, name: updated.name, bodyPart: updated.bodyPart } : e));
+      // Update the currently-visible filtered list. If bodyPart moved off the
+      // selected tab, drop the row; otherwise replace in place.
+      setExercises(prev =>
+        updated.bodyPart === selectedPart
+          ? prev.map(e => e._id === id ? { ...e, ...updated } : e).sort((a, b) => a.name.localeCompare(b.name))
+          : prev.filter(e => e._id !== id),
+      );
+      cancelEditingMeta();
+      const renamed = updated.entriesUpdated || 0;
+      toast.success(renamed > 0 ? `Saved · ${renamed} ${renamed === 1 ? 'entry' : 'entries'} updated` : 'Saved');
+      onTemplateEdited?.();
+    } catch (err) {
+      toast.error(err.message || 'Failed to save');
+    } finally {
+      setSavingMeta(false);
+    }
+  }
+
   function handleKeyDown(e) {
     if (e.key === 'Enter') handleAdd();
   }
@@ -157,7 +203,7 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{ex.name}</span>
                     <div className="flex items-center gap-1 shrink-0">
-                      {ex.videoUrl && editingId !== ex._id && (
+                      {ex.videoUrl && editingId !== ex._id && metaEditId !== ex._id && (
                         <a
                           href={ex.videoUrl}
                           target="_blank"
@@ -168,7 +214,7 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
                           <Play size={13} />
                         </a>
                       )}
-                      {editingId !== ex._id ? (
+                      {editingId !== ex._id && metaEditId !== ex._id ? (
                         <button
                           onClick={() => startEditingUrl(ex)}
                           className="text-xs text-violet-600 font-medium hover:underline px-2 py-0.5"
@@ -176,7 +222,16 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
                           {ex.videoUrl ? 'Edit link' : 'Add link'}
                         </button>
                       ) : null}
-                      {isAdmin && editingId !== ex._id && (
+                      {isAdmin && editingId !== ex._id && metaEditId !== ex._id && (
+                        <button
+                          onClick={() => startEditingMeta(ex)}
+                          className="p-1 rounded-full hover:bg-violet-50 transition-colors"
+                          title="Edit name / category"
+                        >
+                          <Pencil size={13} className="text-violet-500" />
+                        </button>
+                      )}
+                      {isAdmin && editingId !== ex._id && metaEditId !== ex._id && (
                         <button
                           onClick={() => handleDelete(ex._id)}
                           className="p-1 rounded-full hover:bg-red-50 transition-colors"
@@ -187,6 +242,43 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
                       )}
                     </div>
                   </div>
+                  {metaEditId === ex._id && (
+                    <div className="mt-2 space-y-2">
+                      <input
+                        type="text"
+                        value={metaName}
+                        onChange={e => setMetaName(e.target.value)}
+                        placeholder="Exercise name"
+                        className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      />
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={metaBodyPart}
+                          onChange={e => setMetaBodyPart(e.target.value)}
+                          className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400"
+                        >
+                          {BODY_PARTS.map(({ key, label, emoji }) => (
+                            <option key={key} value={key}>{emoji} {label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => saveMeta(ex._id)}
+                          disabled={savingMeta || !metaName.trim()}
+                          className="p-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                          title="Save"
+                        >
+                          <Save size={13} />
+                        </button>
+                        <button
+                          onClick={cancelEditingMeta}
+                          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
+                          title="Cancel"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {editingId === ex._id && (
                     <div className="mt-2 flex items-center gap-2">
                       <input
