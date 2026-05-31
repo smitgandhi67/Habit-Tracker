@@ -16,9 +16,10 @@ const exerciseSchema = new mongoose.Schema({
   videoUrl: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
-exerciseSchema.pre('validate', function setNameKey(next) {
+// Mongoose 9 dropped callback-style middleware (`next` arg). Returning
+// undefined (or a Promise) is the supported pattern.
+exerciseSchema.pre('validate', function setNameKey() {
   if (this.name) this.nameKey = normalizeExerciseName(this.name);
-  next();
 });
 
 // Global unique: one entry per normalized name across all users and body parts.
