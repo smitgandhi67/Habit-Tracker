@@ -34,7 +34,9 @@ app.use(cors({
   origin: process.env.ALLOWED_ORIGIN,
   credentials: true,
 }));
-app.use(express.json({ limit: '10kb' }));
+// 100kb covers the largest current payload (full meal-plan edit ~20kb) with
+// generous headroom while still blocking pathological JSON bombs at the edge.
+app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
 app.use('/api/auth', authRouter);
