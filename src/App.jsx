@@ -14,6 +14,9 @@ import Reports from './pages/Reports';
 import Gym from './pages/Gym';
 import Coaching from './pages/Coaching';
 import Sleep from './pages/Sleep';
+import Meals from './pages/Meals';
+import MealsLibrary from './pages/MealsLibrary';
+import MealsEditor from './pages/MealsEditor';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -36,6 +39,9 @@ function AppInner() {
                   <Route path="/gym" element={<Gym />} />
                   <Route path="/gym/coaching" element={<Coaching />} />
                   <Route path="/sleep" element={<Sleep />} />
+                  <Route path="/meals" element={<Meals />} />
+                  <Route path="/meals/library" element={<MealsLibrary />} />
+                  <Route path="/meals/:id/edit" element={<MealsEditor />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

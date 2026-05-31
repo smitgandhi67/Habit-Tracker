@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, LogOut } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
   { to: '/today',   icon: CalendarDays, label: 'Today'   },
   { to: '/habits',  icon: ListChecks,   label: 'Habits'  },
-  { to: '/reports', icon: BarChart2,    label: 'Reports' },
+  { to: '/meals',   icon: Utensils,     label: 'Meals'   },
   { to: '/gym',     icon: Dumbbell,     label: 'Gym'     },
   { to: '/sleep',   icon: Moon,         label: 'Sleep'   },
+  { to: '/reports', icon: BarChart2,    label: 'Reports' },
 ];
 
 export default function Layout({ children }) {
