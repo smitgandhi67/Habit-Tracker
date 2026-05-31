@@ -20,8 +20,10 @@ const authRouter   = require('./routes/auth');
 const habitsRouter = require('./routes/habits');
 const logsRouter   = require('./routes/logs');
 const gymRouter    = require('./routes/gym');
-const plansRouter  = require('./routes/plans');
-const sleepRouter  = require('./routes/sleep');
+const plansRouter      = require('./routes/plans');
+const sleepRouter      = require('./routes/sleep');
+const mealPlansRouter  = require('./routes/meal-plans');
+const mealLogsRouter   = require('./routes/meal-logs');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -55,11 +57,13 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-app.use('/api/habits', requireAuth, habitsRouter);
-app.use('/api/logs',   requireAuth, logsRouter);
-app.use('/api/gym',    requireAuth, gymRouter);
-app.use('/api/plans',  requireAuth, plansRouter);
-app.use('/api/sleep',  requireAuth, sleepRouter);
+app.use('/api/habits',      requireAuth, habitsRouter);
+app.use('/api/logs',        requireAuth, logsRouter);
+app.use('/api/gym',         requireAuth, gymRouter);
+app.use('/api/plans',       requireAuth, plansRouter);
+app.use('/api/sleep',       requireAuth, sleepRouter);
+app.use('/api/meal-plans',  requireAuth, mealPlansRouter);
+app.use('/api/meal-logs',   requireAuth, mealLogsRouter);
 
 app.use(errorHandler);
 
