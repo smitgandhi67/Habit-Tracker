@@ -46,6 +46,7 @@ router.post('/verify', async (req, res) => {
       photo: user.photo,
       timezone: user.timezone || 'America/New_York',
       weightUnit: user.weightUnit || 'lb',
+      lengthUnit: user.lengthUnit || 'in',
       isAdmin: user.email === ADMIN_EMAIL,
       createdAt: user.createdAt,
     });
@@ -66,6 +67,7 @@ router.get('/me', requireAuth, async (req, res) => {
       photo: user.photo,
       timezone: user.timezone || 'America/New_York',
       weightUnit: user.weightUnit || 'lb',
+      lengthUnit: user.lengthUnit || 'in',
       isAdmin: user.email === ADMIN_EMAIL,
       createdAt: user.createdAt,
     });
@@ -120,6 +122,25 @@ router.put('/weight-unit', requireAuth, async (req, res) => {
     ).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ weightUnit: user.weightUnit });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/auth/length-unit — body: { lengthUnit: 'cm' | 'in' }
+router.put('/length-unit', requireAuth, async (req, res) => {
+  try {
+    const { lengthUnit } = req.body || {};
+    if (lengthUnit !== 'cm' && lengthUnit !== 'in') {
+      return res.status(400).json({ error: "lengthUnit must be 'cm' or 'in'" });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { lengthUnit },
+      { new: true }
+    ).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ lengthUnit: user.lengthUnit });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

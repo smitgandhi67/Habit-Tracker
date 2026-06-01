@@ -12,6 +12,9 @@ const userSchema = new mongoose.Schema({
   // Display unit for gym weights. Values are stored unitless; this
   // controls only the label shown in the UI.
   weightUnit: { type: String, enum: ['kg', 'lb'], default: 'lb' },
+  // Display unit for body circumference measurements (chest/waist/etc).
+  // Like weightUnit, values are stored unitless; this is only a UI label.
+  lengthUnit: { type: String, enum: ['cm', 'in'], default: 'in' },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

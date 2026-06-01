@@ -10,6 +10,7 @@ import GymEntryModal from '../components/GymEntryModal';
 import ManageExercisesModal from '../components/ManageExercisesModal';
 import ExerciseProgress from '../components/ExerciseProgress';
 import PlanTab from '../components/PlanTab';
+import BodyTab from '../components/BodyTab';
 
 function bodyPartLabel(key) {
   return BODY_PARTS.find(b => b.key === key)?.label ?? key;
@@ -32,14 +33,24 @@ export default function Gym() {
   const [manageOpen, setManageOpen] = useState(false);
   const [tab,        setTab]        = useState('log');
 
-  const { user, updateWeightUnit } = useAuth();
+  const { user, updateWeightUnit, updateLengthUnit } = useAuth();
   const isAdmin = !!user?.isAdmin;
   const weightUnit = user?.weightUnit || 'lb';
+  const lengthUnit = user?.lengthUnit || 'in';
 
   async function toggleWeightUnit() {
     const next = weightUnit === 'kg' ? 'lb' : 'kg';
     try {
       await updateWeightUnit(next);
+    } catch {
+      toast.error('Failed to update unit');
+    }
+  }
+
+  async function toggleLengthUnit() {
+    const next = lengthUnit === 'cm' ? 'in' : 'cm';
+    try {
+      await updateLengthUnit(next);
     } catch {
       toast.error('Failed to update unit');
     }
@@ -137,6 +148,15 @@ export default function Gym() {
           >
             {weightUnit}
           </button>
+          {tab === 'body' && (
+            <button
+              onClick={toggleLengthUnit}
+              className="px-2.5 py-1 rounded-full text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors tabular-nums"
+              title="Toggle length unit"
+            >
+              {lengthUnit}
+            </button>
+          )}
           <button
             onClick={() => setManageOpen(true)}
             className="p-2 rounded-full hover:bg-slate-100 transition-colors"
@@ -152,7 +172,7 @@ export default function Gym() {
 
       {/* Tab bar */}
       <div className="flex border-b border-slate-200 mb-4">
-        {[['log', 'Log'], ['plan', 'Plan'], ['progress', 'Progress']].map(([key, label]) => (
+        {[['log', 'Log'], ['plan', 'Plan'], ['progress', 'Progress'], ['body', 'Body']].map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -171,6 +191,8 @@ export default function Gym() {
         <ExerciseProgress />
       ) : tab === 'plan' ? (
         <PlanTab weekData={weekData} onOpenEntry={openFromPlan} />
+      ) : tab === 'body' ? (
+        <BodyTab dateKey={dateKey} weightUnit={weightUnit} lengthUnit={lengthUnit} />
       ) : (
         <>
           {/* Weekly coverage */}

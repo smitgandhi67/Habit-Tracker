@@ -24,6 +24,7 @@ const plansRouter      = require('./routes/plans');
 const sleepRouter      = require('./routes/sleep');
 const mealPlansRouter  = require('./routes/meal-plans');
 const mealLogsRouter   = require('./routes/meal-logs');
+const bodyRouter       = require('./routes/body');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -66,6 +67,7 @@ app.use('/api/plans',       requireAuth, plansRouter);
 app.use('/api/sleep',       requireAuth, sleepRouter);
 app.use('/api/meal-plans',  requireAuth, mealPlansRouter);
 app.use('/api/meal-logs',   requireAuth, mealLogsRouter);
+app.use('/api/body',        requireAuth, bodyRouter);
 
 app.use(errorHandler);
 

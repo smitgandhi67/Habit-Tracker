@@ -91,6 +91,20 @@ export function AuthProvider({ children }) {
     return saved;
   }, []);
 
+  const updateLengthUnit = useCallback(async (lengthUnit) => {
+    if (lengthUnit !== 'cm' && lengthUnit !== 'in') return;
+    const res = await fetch(`${BASE}/api/auth/length-unit`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lengthUnit }),
+    });
+    if (!res.ok) throw new Error('Failed to update unit');
+    const { lengthUnit: saved } = await res.json();
+    setUser(prev => prev ? { ...prev, lengthUnit: saved } : prev);
+    return saved;
+  }, []);
+
   const logout = useCallback(async () => {
     await fetch(`${BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
@@ -98,7 +112,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit, updateLengthUnit }}>
       {children}
     </AuthContext.Provider>
   );
