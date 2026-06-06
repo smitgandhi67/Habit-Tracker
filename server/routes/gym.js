@@ -4,6 +4,7 @@ const GymEntry  = require('../models/GymEntry');
 const Exercise  = require('../models/Exercise');
 const { requireAdmin, isAdmin } = require('../utils/auth');
 const { normalizeExerciseName } = require('../utils/exerciseName');
+const { canonicalizeExercise } = require('../utils/canonicalExercise');
 
 const BODY_PART_LABEL = {
   chest: 'Chest', back: 'Back', shoulders: 'Shoulders', arms: 'Arms',
@@ -103,7 +104,13 @@ router.get('/exercises', async (req, res) => {
 // POST /api/gym/entries
 router.post('/entries', async (req, res) => {
   try {
-    const { date, bodyPart, exerciseName, feel, sets, planDayLabel, safetyChecks } = req.body;
+    const { date, feel, sets, planDayLabel, safetyChecks } = req.body;
+    let { bodyPart, exerciseName } = req.body;
+    // Canonical-name guard: snap to the catalog so logs/progress share one key.
+    const match = exerciseName
+      ? await Exercise.findOne({ nameKey: normalizeExerciseName(exerciseName) })
+      : null;
+    ({ name: exerciseName, bodyPart } = canonicalizeExercise({ name: exerciseName, bodyPart }, match));
     const entry = new GymEntry({
       userId: req.user._id,
       date, bodyPart, exerciseName, feel, sets,
@@ -124,9 +131,18 @@ router.put('/entries/:id', async (req, res) => {
     const entry = await GymEntry.findOne({ _id: req.params.id, userId: req.user._id });
     if (!entry) return res.status(404).json({ error: 'Entry not found' });
 
-    const { bodyPart, exerciseName, feel, sets, planDayLabel, safetyChecks } = req.body;
-    if (bodyPart)     entry.bodyPart     = bodyPart;
-    if (exerciseName) entry.exerciseName = exerciseName;
+    const { feel, sets, planDayLabel, safetyChecks } = req.body;
+    let { bodyPart, exerciseName } = req.body;
+    if (exerciseName) {
+      // Canonical-name guard: snapping name also snaps bodyPart to the catalog.
+      const match = await Exercise.findOne({ nameKey: normalizeExerciseName(exerciseName) });
+      ({ name: exerciseName, bodyPart } = canonicalizeExercise(
+        { name: exerciseName, bodyPart: bodyPart || entry.bodyPart }, match));
+      entry.exerciseName = exerciseName;
+      entry.bodyPart     = bodyPart;
+    } else if (bodyPart) {
+      entry.bodyPart = bodyPart;
+    }
     if (feel)         entry.feel         = feel;
     if (sets)         entry.sets         = sets;
     if (planDayLabel !== undefined) entry.planDayLabel = planDayLabel;

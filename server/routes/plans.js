@@ -1,7 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const WorkoutPlan = require('../models/WorkoutPlan');
+const Exercise = require('../models/Exercise');
 const { isAdmin } = require('../utils/auth');
+const { normalizeExerciseName } = require('../utils/exerciseName');
+const { canonicalizeExercise } = require('../utils/canonicalExercise');
 
 const ALLOWED_FIELDS = ['name', 'description', 'days'];
 
@@ -12,6 +15,24 @@ function pickBody(body) {
     if (body[key] !== undefined) out[key] = body[key];
   }
   return out;
+}
+
+// Canonical-name guard: snap every plan exercise to the catalog so plan names
+// share one key with logs and progress. Mutates and returns `days` in place.
+async function canonicalizeDays(days) {
+  if (!Array.isArray(days)) return days;
+  const exs = await Exercise.find({}).select('name bodyPart nameKey');
+  const byKey = new Map(exs.map(e => [e.nameKey, { name: e.name, bodyPart: e.bodyPart }]));
+  for (const day of days) {
+    for (const ex of day?.exercises || []) {
+      if (!ex || !ex.exerciseName) continue;
+      const match = byKey.get(normalizeExerciseName(ex.exerciseName));
+      const c = canonicalizeExercise({ name: ex.exerciseName, bodyPart: ex.bodyPart }, match);
+      ex.exerciseName = c.name;
+      ex.bodyPart     = c.bodyPart;
+    }
+  }
+  return days;
 }
 
 // Decide whether this user may write to this plan.
@@ -62,6 +83,7 @@ router.post('/', async (req, res) => {
     const payload = pickBody(req.body);
     payload.isMaster    = wantMaster;
     payload.ownerUserId = wantMaster ? null : req.user._id;
+    if (payload.days !== undefined) payload.days = await canonicalizeDays(payload.days);
 
     const plan = await WorkoutPlan.create(payload);
     res.status(201).json(plan);
@@ -80,6 +102,7 @@ router.put('/:id', async (req, res) => {
     if (plan.archivedAt) return res.status(409).json({ error: 'Cannot edit archived plan — unarchive first' });
 
     const update = pickBody(req.body);
+    if (update.days !== undefined) update.days = await canonicalizeDays(update.days);
     Object.assign(plan, update);
     await plan.save();
     res.json(plan);
