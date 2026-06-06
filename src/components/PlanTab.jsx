@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Play, Pencil, Plus, CheckCircle2, Circle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useGym, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
+import { normalizeExerciseName } from '../lib/exerciseName';
 import PlanEditor from './PlanEditor';
 
 function bodyPartEmoji(key) {
@@ -60,10 +61,11 @@ export default function PlanTab({ weekData, onOpenEntry }) {
     fetchExerciseList().then(setExerciseLibrary);
   }, [fetchExerciseList]);
 
+  // Keyed by normalized name: plan names can drift from catalog casing/whitespace.
   const videoUrlByName = useMemo(() => {
     const map = new Map();
     for (const ex of exerciseLibrary) {
-      if (ex.videoUrl) map.set(ex.name, ex.videoUrl);
+      if (ex.videoUrl) map.set(normalizeExerciseName(ex.name), ex.videoUrl);
     }
     return map;
   }, [exerciseLibrary]);
@@ -73,14 +75,14 @@ export default function PlanTab({ weekData, onOpenEntry }) {
   // This-week per-exercise tracking: which planned exercises have been logged?
   const plannedExercises = useMemo(() => uniquePlannedExercises(activePlan), [activePlan]);
   const doneExerciseNames = useMemo(
-    () => new Set((weekData || []).map(e => e.exerciseName).filter(Boolean)),
+    () => new Set((weekData || []).map(e => normalizeExerciseName(e.exerciseName)).filter(Boolean)),
     [weekData],
   );
   const { doneExercises, pendingExercises } = useMemo(() => {
     const done = [];
     const pending = [];
     for (const ex of plannedExercises) {
-      if (doneExerciseNames.has(ex.exerciseName)) done.push(ex);
+      if (doneExerciseNames.has(normalizeExerciseName(ex.exerciseName))) done.push(ex);
       else pending.push(ex);
     }
     return { doneExercises: done, pendingExercises: pending };
@@ -164,7 +166,7 @@ export default function PlanTab({ weekData, onOpenEntry }) {
           ) : (
             <div className="space-y-2">
               {selectedDay.exercises.map((ex, i) => {
-                const videoUrl = videoUrlByName.get(ex.exerciseName);
+                const videoUrl = videoUrlByName.get(normalizeExerciseName(ex.exerciseName));
                 const reps = ex.repsMin && ex.repsMax
                   ? (ex.repsMin === ex.repsMax ? `${ex.repsMin}` : `${ex.repsMin}-${ex.repsMax}`)
                   : '';
