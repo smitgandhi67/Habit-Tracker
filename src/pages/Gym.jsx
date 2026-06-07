@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { format, addDays, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Trophy, Settings, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Trophy, Settings, BookOpen, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useGym, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,7 @@ import ManageExercisesModal from '../components/ManageExercisesModal';
 import ExerciseProgress from '../components/ExerciseProgress';
 import PlanTab from '../components/PlanTab';
 import BodyTab from '../components/BodyTab';
+import ExportHealthModal from '../components/ExportHealthModal';
 
 function bodyPartLabel(key) {
   return BODY_PARTS.find(b => b.key === key)?.label ?? key;
@@ -31,6 +32,7 @@ export default function Gym() {
   const [modalOpen,  setModalOpen]  = useState(false);
   const [editEntry,  setEditEntry]  = useState(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [tab,        setTab]        = useState('log');
 
   const { user, updateWeightUnit, updateLengthUnit } = useAuth();
@@ -158,6 +160,13 @@ export default function Gym() {
             </button>
           )}
           <button
+            onClick={() => setExportOpen(true)}
+            className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+            title="Export health data"
+          >
+            <Download size={20} className="text-slate-500" />
+          </button>
+          <button
             onClick={() => setManageOpen(true)}
             className="p-2 rounded-full hover:bg-slate-100 transition-colors"
             title="Manage exercises"
@@ -283,6 +292,11 @@ export default function Gym() {
           onSave={handleSave}
           onClose={closeModal}
         />
+      )}
+
+      {/* Export health modal */}
+      {exportOpen && (
+        <ExportHealthModal onClose={() => setExportOpen(false)} />
       )}
 
       {/* Manage exercises modal */}
