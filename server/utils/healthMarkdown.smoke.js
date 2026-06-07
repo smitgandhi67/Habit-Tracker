@@ -15,7 +15,7 @@ function ok(label, cond) {
 // --- formatDurationMs ---
 ok('duration 7h30m', formatDurationMs(27_000_000) === '7h 30m');
 ok('duration pads minutes', formatDurationMs(6 * 3600_000 + 5 * 60_000) === '6h 05m');
-ok('duration zero → dash', formatDurationMs(0) === '—');
+ok('duration zero -> dash', formatDurationMs(0) === '-');
 
 // --- aggregateSleepNights ---
 const agg = aggregateSleepNights(
@@ -50,24 +50,37 @@ const md = buildHealthMarkdown({
   ],
   sleepNights: agg,
 });
+ok('ascii only', !/[^\x00-\x7F]/.test(md));
 ok('has title', md.includes('# Health Export'));
-ok('has range', md.includes('2025-06-06 → 2026-06-06'));
+ok('has range', md.includes('2025-06-06 -> 2026-06-06'));
 ok('summary training days', md.includes('Training days: 2'));
 ok('summary PR count', md.includes('PRs: 1'));
-ok('summary weight delta', md.includes('182 lb (2025-06-10) → 174 lb (2026-06-04)') && md.includes('−8 lb'));
-ok('log day label', md.includes('### 2026-06-05 · Day 3'));
+ok('summary weight delta', md.includes('182 lb (2025-06-10) -> 174 lb (2026-06-04)') && md.includes('change -8 lb'));
+ok('log day label', md.includes('### 2026-06-05 | Day 3'));
 ok('log no-label heading', md.includes('### 2026-06-03\n'));
-ok('log exercise + PR', md.includes('**Bench Press** [chest] · medium · 8×135lb, 6×145lb · 🏆 PR'));
-ok('body row with dash', md.includes('| 2026-06-04 | 174 | 40 | 33 | — | — |'));
+ok('log exercise + PR', md.includes('**Bench Press** [chest] | medium | 8x135lb, 6x145lb | [PR]'));
+ok('body row with dash', md.includes('| 2026-06-04 | 174 | 40 | 33 | - | - |'));
 ok('sleep row', md.includes('| 2026-06-05 | 7h 30m | 1 | 4/5 |'));
+
+// --- buildHealthMarkdown: weight delta is rounded (no float dust) ---
+const rounded = buildHealthMarkdown({
+  from: '2026-05-26', to: '2026-06-06', generatedAt: '2026-06-06T00:00:00Z',
+  units: { weight: 'lb', length: 'in' }, gymEntries: [],
+  body: [
+    { date: '2026-06-06', weight: 150.6, chest: null, waist: null, abdomen: null, hips: null },
+    { date: '2026-05-26', weight: 151.7, chest: null, waist: null, abdomen: null, hips: null },
+  ],
+  sleepNights: [],
+});
+ok('weight delta rounded', rounded.includes('change -1.1 lb') && !rounded.includes('1.0999'));
 
 // --- buildHealthMarkdown: empty fixture ---
 const empty = buildHealthMarkdown({
   from: '2026-01-01', to: '2026-01-31', generatedAt: '2026-02-01T00:00:00Z',
   units: { weight: 'kg', length: 'cm' }, gymEntries: [], body: [], sleepNights: [],
 });
-ok('empty: training log placeholder', empty.includes('## Gym — Training Log\n_No data in this range._'));
-ok('empty: body placeholder', empty.includes('## Gym — Body Measurements\n_No data in this range._'));
+ok('empty: training log placeholder', empty.includes('## Gym - Training Log\n_No data in this range._'));
+ok('empty: body placeholder', empty.includes('## Gym - Body Measurements\n_No data in this range._'));
 ok('empty: sleep placeholder', empty.includes('## Sleep\n_No data in this range._'));
 ok('empty: summary no crash', empty.includes('Training days: 0'));
 
