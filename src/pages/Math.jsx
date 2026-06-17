@@ -4,9 +4,12 @@ import { Check, X, Tv, Tent, Trophy, Sparkles } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
 import { answerChoices, TOTAL_FACTS } from '../lib/mathFacts';
 import { affordableQty } from '../lib/mathRewards';
+import { timerSecondsFor } from '../lib/mathTimer';
+import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
 export default function MathPage() {
+  const { user } = useAuth();
   const {
     loading, question, session, reward, rewards, sleepoverPct,
     retiredCount, submitAnswer, advance, redeem, flush,
@@ -25,6 +28,18 @@ export default function MathPage() {
   useEffect(() => {
     if (phase === 'input') inputRef.current?.focus();
   }, [phase, question]);
+
+  // Hidden per-question countdown. If it expires while still awaiting a typed
+  // answer, the question counts as incorrect and the choice hint is shown.
+  useEffect(() => {
+    if (phase !== 'input' || !question || stopped) return;
+    const ms = timerSecondsFor(user?.email) * 1000;
+    const id = setTimeout(() => {
+      submitAnswer(-1, true); // sentinel: never equals a product → logged as incorrect
+      setPhase('wrong');
+    }, ms);
+    return () => clearTimeout(id);
+  }, [phase, question, stopped, user, submitAnswer]);
 
   if (loading) {
     return <div className="p-4 pt-10 text-center text-slate-400">Loading…</div>;
