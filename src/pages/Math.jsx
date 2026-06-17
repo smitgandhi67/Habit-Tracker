@@ -9,7 +9,7 @@ import { apiFetch } from '../lib/api';
 export default function MathPage() {
   const {
     loading, question, session, reward, rewards, sleepoverPct,
-    retiredCount, submitAnswer, advance, redeem,
+    retiredCount, submitAnswer, advance, redeem, flush,
   } = useMath();
 
   const [typed, setTyped] = useState('');
@@ -35,13 +35,13 @@ export default function MathPage() {
   const tvMinutes = tv ? affordableQty(reward.balance, tv) : 0;
   const poolLeft = TOTAL_FACTS - retiredCount;
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
     if (phase !== 'input' || typed === '' || !question) return;
-    const res = await submitAnswer(typed, true);
+    const res = submitAnswer(typed, true); // graded locally — instant, no network wait
     setPhase(res.correct ? 'right' : 'wrong');
     if (res.correct) {
-      setTimeout(() => { setTyped(''); setPhase('input'); advance(); }, 650);
+      setTimeout(() => { setTyped(''); setPhase('input'); advance(); }, 500);
     }
   }
 
@@ -139,7 +139,7 @@ export default function MathPage() {
 
           {question && (
             <button
-              onClick={() => setStopped(true)}
+              onClick={() => { flush(); setStopped(true); }}
               className="mt-6 w-full text-slate-400 hover:text-slate-600 text-sm font-medium"
             >
               Stop for now

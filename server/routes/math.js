@@ -145,6 +145,88 @@ router.post('/answer', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/math/answer/batch — body { answers: [{ a, b, answer, firstTry, date }] }
+// Same grading as /answer but for a buffered batch (one Lambda call for N answers).
+// Server still re-grades each (never trusts the client). Returns the authoritative
+// wallet + the current week's retired facts so the client can reconcile.
+const MAX_BATCH = 200;
+router.post('/answer/batch', async (req, res, next) => {
+  try {
+    const { answers } = req.body || {};
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return res.status(400).json({ error: 'answers must be a non-empty array' });
+    }
+    if (answers.length > MAX_BATCH) return res.status(400).json({ error: `max ${MAX_BATCH} answers per batch` });
+    for (const it of answers) {
+      if (!isValidOperand(it.a) || !isValidOperand(it.b) || !Number.isInteger(it.answer) || !it.date || !ISO_DATE.test(it.date)) {
+        return res.status(400).json({ error: 'each answer needs valid a,b (2-20), integer answer, and date' });
+      }
+    }
+
+    const userId = req.user._id;
+
+    // Group by date so daily stats + week keys stay correct across a midnight crossover.
+    const byDate = new Map();
+    for (const it of answers) {
+      if (!byDate.has(it.date)) byDate.set(it.date, []);
+      byDate.get(it.date).push(it);
+    }
+
+    let pointsInc = 0;
+    for (const [date, items] of byDate) {
+      const weekKey = isoWeekKey(date);
+      let attempted = 0, correct = 0;
+      const earnedFacts = new Set(); // distinct facts earned this date → 1 mastery step each
+      for (const it of items) {
+        attempted += 1;
+        if (it.a * it.b === it.answer && it.firstTry === true) {
+          correct += 1;
+          earnedFacts.add(canonicalKey(it.a, it.b));
+        }
+      }
+      pointsInc += correct;
+
+      await MathDailyStat.findOneAndUpdate(
+        { userId, date },
+        { $inc: { attempted, correct } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      for (const factKey of earnedFacts) {
+        const fp = await MathFactProgress.findOneAndUpdate(
+          { userId, weekKey, factKey },
+          { $setOnInsert: { correctCount: 0, lastCorrectDate: null, retiredAt: null } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        if (fp.lastCorrectDate !== date && !fp.retiredAt) {
+          fp.correctCount += 1;
+          fp.lastCorrectDate = date;
+          if (fp.correctCount >= RETIRE_AT) fp.retiredAt = new Date();
+          await fp.save();
+        }
+      }
+    }
+
+    const reward = pointsInc > 0
+      ? await MathReward.findOneAndUpdate({ userId }, { $inc: { pointsEarned: pointsInc } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+      : await getReward(userId);
+
+    // Reconcile pool + today's counters against the most recent date in the batch.
+    const latestDate = answers.map(a => a.date).sort().at(-1);
+    const weekKey = isoWeekKey(latestDate);
+    const [retiredFactKeys, daily] = await Promise.all([
+      MathFactProgress.find({ userId, weekKey, retiredAt: { $ne: null } }).distinct('factKey'),
+      MathDailyStat.findOne({ userId, date: latestDate }).lean(),
+    ]);
+
+    res.json({
+      reward: rewardSummary(reward),
+      retiredFactKeys,
+      today: { attempted: daily?.attempted || 0, correct: daily?.correct || 0 },
+    });
+  } catch (err) { next(err); }
+});
+
 // POST /api/math/redeem — body { rewardKey, qty }. Spends points from the balance.
 router.post('/redeem', async (req, res, next) => {
   try {
