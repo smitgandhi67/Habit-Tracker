@@ -1,0 +1,60 @@
+// Smoke test for src/lib/mathFacts.js. Run with:
+//   node src/lib/mathFacts.smoke.mjs
+// Exits 0 if all assertions pass, 1 otherwise.
+
+import { generateAllFacts, canonicalKey, pickQuestion, answerChoices, TOTAL_FACTS } from './mathFacts.js';
+
+let failures = 0;
+function assert(label, ok, detail) {
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `  → ${detail}`}`);
+  if (!ok) failures++;
+}
+function eq(label, a, b) { assert(label, a === b, `expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
+
+// 190 unique deduped facts
+const facts = generateAllFacts();
+eq('generateAllFacts length', facts.length, 190);
+eq('TOTAL_FACTS', TOTAL_FACTS, 190);
+eq('all keys unique', new Set(facts.map(f => f.key)).size, 190);
+assert('all keys canonical (a<=b)', facts.every(f => f.a <= f.b), 'found a>b');
+eq('canonical commutative', canonicalKey(20, 2), canonicalKey(2, 20));
+
+// pickQuestion never returns a retired fact
+const retired = new Set(facts.slice(0, 189).map(f => f.key)); // leave exactly 1 live
+let okPool = true;
+for (let i = 0; i < 200; i++) {
+  const q = pickQuestion(retired, null);
+  if (!q || retired.has(q.key)) { okPool = false; break; }
+}
+assert('pickQuestion avoids retired', okPool, 'returned a retired/empty fact');
+
+// empty pool → null
+eq('pickQuestion empty pool → null', pickQuestion(new Set(facts.map(f => f.key)), null), null);
+
+// avoids immediate repeat when alternatives exist
+let repeats = 0;
+let last = null;
+for (let i = 0; i < 300; i++) {
+  const q = pickQuestion([], last);
+  if (q.key === last) repeats++;
+  last = q.key;
+}
+assert('pickQuestion avoids immediate repeat', repeats === 0, `${repeats} repeats`);
+
+// product orientation is consistent
+const q = pickQuestion([], null);
+eq('product matches a*b', q.product, q.a * q.b);
+
+// answerChoices: 4 distinct, includes correct
+const choices = answerChoices(7, 8);
+eq('answerChoices length', choices.length, 4);
+eq('answerChoices distinct', new Set(choices).size, 4);
+assert('answerChoices includes correct', choices.includes(56), `got ${JSON.stringify(choices)}`);
+assert('answerChoices all positive', choices.every(c => c > 0), `got ${JSON.stringify(choices)}`);
+// smallest fact still yields 4 distinct positive choices
+const small = answerChoices(2, 2);
+eq('small fact 4 distinct', new Set(small).size, 4);
+assert('small fact all positive', small.every(c => c > 0), `got ${JSON.stringify(small)}`);
+
+console.log(failures === 0 ? '\nAll smoke checks passed.' : `\n${failures} failures.`);
+process.exit(failures === 0 ? 0 : 1);

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, LogOut } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, ShieldCheck, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
   { to: '/today',   icon: CalendarDays, label: 'Today'   },
   { to: '/habits',  icon: ListChecks,   label: 'Habits'  },
   { to: '/meals',   icon: Utensils,     label: 'Meals'   },
+  { to: '/math',    icon: Calculator,   label: 'Math'    },
   { to: '/gym',     icon: Dumbbell,     label: 'Gym'     },
   { to: '/sleep',   icon: Moon,         label: 'Sleep'   },
   { to: '/reports', icon: BarChart2,    label: 'Reports' },
@@ -41,6 +42,15 @@ export default function Layout({ children }) {
                 <p className="text-xs font-semibold text-slate-700 truncate">{user?.name}</p>
                 <p className="text-xs text-slate-400 truncate">{user?.email}</p>
               </div>
+              {user?.isAdmin && (
+                <NavLink
+                  to="/math/admin"
+                  onClick={() => setShowMenu(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <ShieldCheck size={15} /> Parent console
+                </NavLink>
+              )}
               <button
                 onClick={() => { setShowMenu(false); logout(); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-colors"
