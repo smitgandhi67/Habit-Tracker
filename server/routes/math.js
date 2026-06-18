@@ -610,4 +610,96 @@ router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, 
   } catch (err) { next(err); }
 });
 
+// ---- points ledger (per-day history) --------------------------------------
+
+// Local 'YYYY-MM-DD' for a Date in the given IANA tz (en-CA renders ISO order).
+function localDateOf(date, tz) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz || 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+}
+
+// Builds a newest-first, cursor-paginated timeline of everything that moved a kid's
+// points: math-practice earnings (daily), habit approvals, admin add/deduct/reset,
+// redeems, and declined habit awards. Merges three collections in app (no cross-collection
+// DB sort exists) and pages by a timestamp cursor. Returns { events, nextCursor }.
+async function buildLedger(userId, cursorIso, limit) {
+  const user = await User.findById(userId).select('timezone').lean();
+  const tz = user?.timezone || 'America/New_York';
+  const upper = cursorIso ? new Date(cursorIso) : new Date(8640000000000000); // exclusive upper bound
+
+  const [adjustments, declines, stats] = await Promise.all([
+    MathPointAdjustment.find({ userId, createdAt: { $lt: upper } }).sort({ createdAt: -1 }).limit(limit).lean(),
+    HabitPointAward.find({ userId, status: 'rejected', reviewedAt: { $ne: null, $lt: upper } }).sort({ reviewedAt: -1 }).limit(limit).lean(),
+    // Stats carry no timestamp; we derive one from the local date (noon UTC) and filter in app.
+    MathDailyStat.find({ userId, correct: { $gt: 0 } }).sort({ date: -1 }).limit(limit * 2).lean(),
+  ]);
+
+  const adjEvents = adjustments.map(a => {
+    const isHabit = a.type === 'add' && /^Habit award/i.test(a.reason || '');
+    const kind = a.type === 'add' ? (isHabit ? 'approve' : 'add') : a.type; // deduct|reset|redeem
+    const positive = kind === 'approve' || kind === 'add';
+    const labels = { approve: a.reason || 'Habit approved', add: a.reason || 'Bonus', deduct: a.reason || 'Deduction', reset: 'Reset', redeem: a.reason || a.rewardKey || 'Redeemed' };
+    return {
+      ts: a.createdAt, localDate: localDateOf(a.createdAt, tz), kind,
+      delta: positive ? a.amount : -a.amount, label: labels[kind],
+      meta: { adminEmail: a.adminEmail, rewardKey: a.rewardKey || null },
+    };
+  });
+
+  const declineEvents = declines.map(d => ({
+    ts: d.reviewedAt, localDate: localDateOf(d.reviewedAt, tz), kind: 'decline',
+    delta: 0, label: `Declined habit award (${d.date})`,
+    meta: { wouldBe: d.points, habitDate: d.date },
+  }));
+
+  const earnEvents = stats
+    .map(s => ({ ts: new Date(`${s.date}T12:00:00Z`), localDate: s.date, correct: s.correct, attempted: s.attempted }))
+    .filter(e => e.ts < upper)
+    .slice(0, limit)
+    .map(e => ({
+      ts: e.ts, localDate: e.localDate, kind: 'earn',
+      delta: e.correct, label: 'Math practice',
+      meta: { correct: e.correct, attempted: e.attempted },
+    }));
+
+  const merged = [...adjEvents, ...declineEvents, ...earnEvents].sort((a, b) => b.ts - a.ts);
+  const events = merged.slice(0, limit);
+  const more = merged.length > limit
+    || adjustments.length === limit || declines.length === limit || earnEvents.length === limit;
+  const nextCursor = (more && events.length) ? events[events.length - 1].ts.toISOString() : null;
+  return { events, nextCursor };
+}
+
+// Shared parsing/validation for both ledger routes.
+function parseLedgerQuery(req) {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+  let cursor = null;
+  if (req.query.cursor) {
+    const d = new Date(req.query.cursor);
+    if (Number.isNaN(d.getTime())) return { error: 'invalid cursor' };
+    cursor = d.toISOString();
+  }
+  return { limit, cursor };
+}
+
+// GET /api/math/ledger?cursor=&limit= — the signed-in kid's own points history.
+router.get('/ledger', async (req, res, next) => {
+  try {
+    const q = parseLedgerQuery(req);
+    if (q.error) return res.status(400).json({ error: q.error });
+    res.json(await buildLedger(req.user._id, q.cursor, q.limit));
+  } catch (err) { next(err); }
+});
+
+// GET /api/math/admin/ledger?userId=&cursor=&limit= — any kid's history (admin).
+router.get('/admin/ledger', requireAdmin, async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.query.userId)) return res.status(400).json({ error: 'valid userId required' });
+    const q = parseLedgerQuery(req);
+    if (q.error) return res.status(400).json({ error: q.error });
+    res.json(await buildLedger(req.query.userId, q.cursor, q.limit));
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
