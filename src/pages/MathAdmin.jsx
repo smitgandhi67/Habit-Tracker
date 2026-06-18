@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Minus, Plus, RotateCcw, Save } from 'lucide-react';
+import { Minus, Plus, RotateCcw, Save, Check, X, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
-// Parent-only console: pick a kid, see their points, adjust them, edit reward costs.
+// Parent-only console: pick a kid, see their points, adjust them, assign habit
+// points, approve habit awards, and edit reward costs.
 export default function MathAdmin() {
   const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState([]);
@@ -13,6 +14,8 @@ export default function MathAdmin() {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [rewards, setRewards] = useState([]);
+  const [habits, setHabits] = useState([]);   // selected kid's habits (with editable points)
+  const [awards, setAwards] = useState([]);    // pending habit-point awards across kids
   const [busy, setBusy] = useState(false);
 
   const loadUsers = useCallback(async () => {
@@ -25,6 +28,14 @@ export default function MathAdmin() {
     }
   }, []);
 
+  const loadAwards = useCallback(async () => {
+    try {
+      setAwards(await apiFetch('/api/math/admin/habit-awards?status=pending'));
+    } catch {
+      toast.error('Failed to load approvals');
+    }
+  }, []);
+
   useEffect(() => {
     if (!user?.isAdmin) return;
     apiFetch('/api/math/admin/users')
@@ -33,7 +44,50 @@ export default function MathAdmin() {
     apiFetch('/api/math/admin/config')
       .then(d => setRewards(d.rewards || []))
       .catch(() => {});
+    apiFetch('/api/math/admin/habit-awards?status=pending')
+      .then(list => setAwards(list))
+      .catch(() => {});
   }, [user]);
+
+  // Load the selected kid's habits (with point values) for the assignment UI.
+  useEffect(() => {
+    let cancelled = false;
+    if (!selected) {
+      Promise.resolve().then(() => { if (!cancelled) setHabits([]); });
+      return () => { cancelled = true; };
+    }
+    apiFetch(`/api/math/admin/habits?userId=${selected._id}`)
+      .then(list => { if (!cancelled) setHabits(list.map(h => ({ ...h, draft: String(h.points || 0) }))); })
+      .catch(() => { if (!cancelled) setHabits([]); });
+    return () => { cancelled = true; };
+  }, [selected]);
+
+  async function saveHabitPoints(habitId, draft) {
+    const points = Number(draft);
+    if (!Number.isInteger(points) || points < 0) { toast.error('Points must be a whole number ≥ 0'); return; }
+    setBusy(true);
+    try {
+      await apiFetch(`/api/math/admin/habits/${habitId}/points`, {
+        method: 'PUT', body: JSON.stringify({ points }),
+      });
+      setHabits(hs => hs.map(h => (h._id === habitId ? { ...h, points, draft: String(points) } : h)));
+      toast.success('Saved');
+    } catch (err) {
+      toast.error(String(err.message || 'Failed').slice(0, 120));
+    } finally { setBusy(false); }
+  }
+
+  async function reviewAward(id, action) {
+    setBusy(true);
+    try {
+      await apiFetch(`/api/math/admin/habit-awards/${id}/${action}`, { method: 'POST' });
+      await loadAwards();             // refresh queue from the server
+      await loadUsers();              // balances change on approve
+      toast.success(action === 'approve' ? 'Approved ⭐' : 'Rejected');
+    } catch (err) {
+      toast.error(String(err.message || 'Failed').slice(0, 120));
+    } finally { setBusy(false); }
+  }
 
   if (authLoading) return <div className="p-4 pt-10 text-center text-slate-400">Loading…</div>;
   if (!user?.isAdmin) return <Navigate to="/math" replace />;
@@ -86,6 +140,46 @@ export default function MathAdmin() {
         <h1 className="text-2xl font-extrabold text-slate-800">Math — Parent Console</h1>
         <p className="text-slate-400 text-sm">Manage kids' points and rewards</p>
       </header>
+
+      {/* Pending habit-point approvals */}
+      <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-4">
+        <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+          Approvals
+          {awards.length > 0 && (
+            <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{awards.length}</span>
+          )}
+        </h3>
+        {awards.length === 0 ? (
+          <p className="text-sm text-slate-400">No habit points waiting for approval.</p>
+        ) : (
+          <div className="space-y-2">
+            {awards.map(a => (
+              <div key={a._id} className="flex items-center gap-2 rounded-2xl border border-slate-100 px-3 py-2">
+                <span className="text-lg select-none">{a.habitEmoji || '⭐'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-700 truncate">{a.userName} · {a.habitName}</p>
+                  <p className="text-xs text-slate-400">{a.date} · ⭐ {a.points}</p>
+                </div>
+                <button
+                  disabled={busy}
+                  onClick={() => reviewAward(a._id, 'approve')}
+                  className="flex items-center gap-1 bg-green-500 text-white text-sm font-bold rounded-xl px-3 py-1.5 hover:bg-green-600 disabled:opacity-50"
+                >
+                  <Check size={15} /> Approve
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => reviewAward(a._id, 'reject')}
+                  className="flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl px-2.5 py-1.5 hover:bg-slate-200 disabled:opacity-50"
+                  aria-label="Reject"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* User list */}
       <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-4">
@@ -162,6 +256,42 @@ export default function MathAdmin() {
               <RotateCcw size={16} /> Reset
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Habit points for the selected kid */}
+      {selected && (
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 mb-4">
+          <h3 className="font-bold text-slate-700 mb-1 flex items-center gap-2">
+            <Star size={16} className="text-violet-500" /> Habit points — {selected.name}
+          </h3>
+          <p className="text-xs text-slate-400 mb-3">Points earned each day the habit is fully completed (you approve them).</p>
+          {habits.length === 0 ? (
+            <p className="text-sm text-slate-400">No active habits for this kid.</p>
+          ) : (
+            <div className="space-y-2">
+              {habits.map(h => (
+                <div key={h._id} className="flex items-center gap-2">
+                  <span className="text-lg select-none">{h.emoji}</span>
+                  <span className="flex-1 text-sm font-medium text-slate-600 truncate">{h.name}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={h.draft}
+                    onChange={e => setHabits(hs => hs.map(x => (x._id === h._id ? { ...x, draft: e.target.value } : x)))}
+                    className="w-20 rounded-xl border-2 border-slate-200 focus:border-violet-400 outline-none px-3 py-1.5 tabular-nums text-right"
+                  />
+                  <button
+                    disabled={busy || h.draft === String(h.points || 0)}
+                    onClick={() => saveHabitPoints(h._id, h.draft)}
+                    className="flex items-center gap-1 bg-violet-600 text-white text-sm font-bold rounded-xl px-3 py-1.5 hover:bg-violet-700 disabled:opacity-40"
+                  >
+                    <Save size={14} /> Save
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
