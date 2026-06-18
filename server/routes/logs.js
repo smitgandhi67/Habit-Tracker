@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const HabitLog = require('../models/HabitLog');
+const { syncHabitAward } = require('../utils/habitAwards');
 
 // GET logs for multiple dates  ?dates=2024-01-01,2024-01-02,...
 router.get('/batch', async (req, res) => {
@@ -63,6 +64,23 @@ router.put('/:habitId', async (req, res) => {
       update,
       { upsert: true, new: true, runValidators: true }
     );
+
+    // Sync the habit-points award off the new completion state. Best-effort: the log
+    // save is the source of truth and the award is re-derivable, so a failure here must
+    // not fail the request. Only relevant when status was part of this update.
+    if (update.status !== undefined) {
+      try {
+        await syncHabitAward({
+          userId: req.user._id,
+          habitId: req.params.habitId,
+          date,
+          status: log.status,
+        });
+      } catch (awardErr) {
+        console.error('syncHabitAward failed:', awardErr.message);
+      }
+    }
+
     res.json(log);
   } catch (err) {
     res.status(400).json({ error: err.message });
