@@ -47,6 +47,7 @@ router.post('/verify', async (req, res) => {
       timezone: user.timezone || 'America/New_York',
       weightUnit: user.weightUnit || 'lb',
       lengthUnit: user.lengthUnit || 'in',
+      grade: user.grade ?? null,
       isAdmin: user.email === ADMIN_EMAIL,
       createdAt: user.createdAt,
     });
@@ -68,6 +69,7 @@ router.get('/me', requireAuth, async (req, res) => {
       timezone: user.timezone || 'America/New_York',
       weightUnit: user.weightUnit || 'lb',
       lengthUnit: user.lengthUnit || 'in',
+      grade: user.grade ?? null,
       isAdmin: user.email === ADMIN_EMAIL,
       createdAt: user.createdAt,
     });
@@ -141,6 +143,25 @@ router.put('/length-unit', requireAuth, async (req, res) => {
     ).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ lengthUnit: user.lengthUnit });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/auth/grade — body: { grade: 2|3|4|5|null }
+router.put('/grade', requireAuth, async (req, res) => {
+  try {
+    const { grade } = req.body || {};
+    if (grade !== null && ![2, 3, 4, 5].includes(grade)) {
+      return res.status(400).json({ error: 'grade must be 2, 3, 4, 5, or null' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { grade },
+      { new: true }
+    ).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ grade: user.grade ?? null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
