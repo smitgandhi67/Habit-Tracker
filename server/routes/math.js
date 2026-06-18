@@ -7,6 +7,8 @@ const MathFactProgress = require('../models/MathFactProgress');
 const MathReward = require('../models/MathReward');
 const MathPointAdjustment = require('../models/MathPointAdjustment');
 const MathRewardConfig = require('../models/MathRewardConfig');
+const Habit = require('../models/Habit');
+const HabitPointAward = require('../models/HabitPointAward');
 const User = require('../models/User');
 const { requireAdmin } = require('../utils/auth');
 const {
@@ -359,6 +361,107 @@ router.put('/admin/config', requireAdmin, async (req, res, next) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     res.json({ rewards: cfg.rewards });
+  } catch (err) { next(err); }
+});
+
+// ---- admin: habit points + approvals --------------------------------------
+
+// GET /api/math/admin/habits?userId= — active habits (optionally for one kid) with
+// their point value, for the points-assignment UI.
+router.get('/admin/habits', requireAdmin, async (req, res, next) => {
+  try {
+    const filter = { archivedAt: null };
+    if (req.query.userId) {
+      if (!mongoose.isValidObjectId(req.query.userId)) return res.status(400).json({ error: 'valid userId required' });
+      filter.userId = req.query.userId;
+    }
+    const habits = await Habit.find(filter).select('userId name emoji points order').sort({ order: 1 }).lean();
+    res.json(habits);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/math/admin/habits/:habitId/points — body { points }
+router.put('/admin/habits/:habitId/points', requireAdmin, async (req, res, next) => {
+  try {
+    const { points } = req.body || {};
+    if (!mongoose.isValidObjectId(req.params.habitId)) return res.status(400).json({ error: 'valid habitId required' });
+    if (!Number.isInteger(points) || points < 0) return res.status(400).json({ error: 'points must be a non-negative integer' });
+    const habit = await Habit.findByIdAndUpdate(req.params.habitId, { points }, { new: true }).select('_id name points').lean();
+    if (!habit) return res.status(404).json({ error: 'Habit not found' });
+    res.json(habit);
+  } catch (err) { next(err); }
+});
+
+// GET /api/math/admin/habit-awards?status=pending — awards to review, enriched with
+// kid + habit names. Defaults to pending; accepts pending|approved|rejected.
+router.get('/admin/habit-awards', requireAdmin, async (req, res, next) => {
+  try {
+    const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : 'pending';
+    const awards = await HabitPointAward.find({ status }).sort({ date: -1, createdAt: -1 }).limit(500).lean();
+    const userIds = [...new Set(awards.map(a => String(a.userId)))];
+    const habitIds = [...new Set(awards.map(a => String(a.habitId)))];
+    const [users, habits] = await Promise.all([
+      User.find({ _id: { $in: userIds } }).select('name email').lean(),
+      Habit.find({ _id: { $in: habitIds } }).select('name emoji').lean(),
+    ]);
+    const userMap = new Map(users.map(u => [String(u._id), u]));
+    const habitMap = new Map(habits.map(h => [String(h._id), h]));
+    res.json(awards.map(a => ({
+      _id: a._id,
+      userId: a.userId,
+      userName: userMap.get(String(a.userId))?.name || '—',
+      habitId: a.habitId,
+      habitName: habitMap.get(String(a.habitId))?.name || '—',
+      habitEmoji: habitMap.get(String(a.habitId))?.emoji || '',
+      date: a.date,
+      points: a.points,
+      status: a.status,
+    })));
+  } catch (err) { next(err); }
+});
+
+// POST /api/math/admin/habit-awards/:id/approve — idempotent: credits the kid's pool
+// once on the pending→approved transition, with an audit row.
+router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid award id required' });
+    const award = await HabitPointAward.findById(req.params.id);
+    if (!award) return res.status(404).json({ error: 'Award not found' });
+    if (award.status === 'approved') return res.json({ award }); // already credited — no double credit
+
+    award.status = 'approved';
+    award.reviewedBy = req.user.email;
+    award.reviewedAt = new Date();
+    await award.save();
+
+    if (award.points > 0) {
+      await MathReward.findOneAndUpdate(
+        { userId: award.userId },
+        { $inc: { pointsEarned: award.points } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      await MathPointAdjustment.create({
+        userId: award.userId, adminEmail: req.user.email, type: 'add',
+        amount: award.points, reason: `Habit award ${award.date}`,
+      });
+    }
+    res.json({ award });
+  } catch (err) { next(err); }
+});
+
+// POST /api/math/admin/habit-awards/:id/reject — only from pending (approved is final).
+router.post('/admin/habit-awards/:id/reject', requireAdmin, async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid award id required' });
+    const award = await HabitPointAward.findById(req.params.id);
+    if (!award) return res.status(404).json({ error: 'Award not found' });
+    if (award.status === 'approved') return res.status(409).json({ error: 'Cannot reject an already-approved award' });
+
+    award.status = 'rejected';
+    award.reviewedBy = req.user.email;
+    award.reviewedAt = new Date();
+    await award.save();
+    res.json({ award });
   } catch (err) { next(err); }
 });
 
