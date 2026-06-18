@@ -19,6 +19,7 @@ import MealsLibrary from './pages/MealsLibrary';
 import MealsEditor from './pages/MealsEditor';
 import MathPage from './pages/Math';
 import MathAdmin from './pages/MathAdmin';
+import PointsHistory from './pages/PointsHistory';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -45,6 +46,7 @@ function AppInner() {
                   <Route path="/meals/library" element={<MealsLibrary />} />
                   <Route path="/meals/:id/edit" element={<MealsEditor />} />
                   <Route path="/math" element={<MathPage />} />
+                  <Route path="/math/history" element={<PointsHistory />} />
                   <Route path="/math/admin" element={<MathAdmin />} />
                 </Routes>
               </Layout>

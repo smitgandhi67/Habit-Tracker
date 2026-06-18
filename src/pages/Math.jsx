@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { format, subDays } from 'date-fns';
-import { Check, X, Tv, Tent, Trophy, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Check, X, Tv, Tent, Trophy, Sparkles, History } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
 import { choicesForAnswer } from '../lib/mathFacts';
 import { affordableQty } from '../lib/mathRewards';
@@ -77,9 +78,17 @@ export default function MathPage() {
   return (
     <div className="p-4 pb-28">
       <header className="pt-4 mb-4">
-        <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
-          <Sparkles className="text-violet-500" /> Math Practice
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
+            <Sparkles className="text-violet-500" /> Math Practice
+          </h1>
+          <Link
+            to="/math/history"
+            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
+          >
+            <History size={16} /> History
+          </Link>
+        </div>
         <p className="text-slate-400 text-sm mt-1">
           {op === 'mul'
             ? (poolLeft > 0 ? `${poolLeft} facts left to master this week` : 'All facts mastered this week! 🎉')
