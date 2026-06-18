@@ -15,6 +15,9 @@ const habitSchema = new mongoose.Schema({
   },
   order:      { type: Number, default: 0 },
   archivedAt: { type: Date, default: null, index: true },
+  // Reward points granted each day the habit is fully completed (status 'done').
+  // Parent/admin-set only — never editable through the kid's habit CRUD routes.
+  points:     { type: Number, default: 0, min: 0 },
   config: {
     label: { type: String, trim: true },
     type:  { type: String, enum: ['number', 'time', 'text'] },
