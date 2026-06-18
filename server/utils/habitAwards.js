@@ -17,7 +17,14 @@ async function syncHabitAward({ userId, habitId, date, status }) {
 
   if (status === 'done' && points > 0) {
     if (!existing) {
-      return HabitPointAward.create({ userId, habitId, date, points, status: 'pending' });
+      try {
+        return await HabitPointAward.create({ userId, habitId, date, points, status: 'pending' });
+      } catch (err) {
+        // Concurrent done-PUTs can race on the unique {habitId,date} index; the award
+        // now exists, which is the desired end state — treat as success.
+        if (err.code === 11000) return HabitPointAward.findOne({ habitId, date });
+        throw err;
+      }
     }
     if (existing.status === 'pending' && existing.points !== points) {
       existing.points = points;
