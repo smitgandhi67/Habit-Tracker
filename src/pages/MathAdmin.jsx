@@ -17,6 +17,7 @@ export default function MathAdmin() {
   const [rewards, setRewards] = useState([]);
   const [habits, setHabits] = useState([]);   // selected kid's habits (with editable points)
   const [awards, setAwards] = useState([]);    // pending habit-point awards across kids
+  const [picked, setPicked] = useState(() => new Set()); // award ids checked for batch approve
   const [busy, setBusy] = useState(false);
 
   const loadUsers = useCallback(async () => {
@@ -31,7 +32,11 @@ export default function MathAdmin() {
 
   const loadAwards = useCallback(async () => {
     try {
-      setAwards(await apiFetch('/api/math/admin/habit-awards?status=pending'));
+      const list = await apiFetch('/api/math/admin/habit-awards?status=pending');
+      setAwards(list);
+      // Drop any checked ids that no longer exist (approved/rejected elsewhere).
+      const live = new Set(list.map(a => a._id));
+      setPicked(prev => new Set([...prev].filter(id => live.has(id))));
     } catch {
       toast.error('Failed to load approvals');
     }
@@ -89,6 +94,36 @@ export default function MathAdmin() {
       setSelected(prev => (prev ? { ...prev, grade: saved } : prev));
       setUsers(us => us.map(u => (u._id === selected._id ? { ...u, grade: saved } : u)));
       toast.success(saved ? `Grade ${saved}` : 'Grade cleared');
+    } catch (err) {
+      toast.error(String(err.message || 'Failed').slice(0, 120));
+    } finally { setBusy(false); }
+  }
+
+  function togglePick(id) {
+    setPicked(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setPicked(prev => (prev.size === awards.length ? new Set() : new Set(awards.map(a => a._id))));
+  }
+
+  async function approveSelected() {
+    const ids = [...picked];
+    if (ids.length === 0) return;
+    setBusy(true);
+    try {
+      const res = await apiFetch('/api/math/admin/habit-awards/approve-batch', {
+        method: 'POST', body: JSON.stringify({ ids }),
+      });
+      await loadAwards();   // single refresh for the whole batch
+      await loadUsers();    // balances changed
+      setPicked(new Set());
+      const skippedNote = res.skipped ? ` (${res.skipped} skipped)` : '';
+      toast.success(`Approved ${res.approved} ⭐${skippedNote}`);
     } catch (err) {
       toast.error(String(err.message || 'Failed').slice(0, 120));
     } finally { setBusy(false); }
@@ -160,41 +195,74 @@ export default function MathAdmin() {
 
       {/* Pending habit-point approvals */}
       <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-4">
-        <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
-          Approvals
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-slate-700 flex items-center gap-2">
+            Approvals
+            {awards.length > 0 && (
+              <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{awards.length}</span>
+            )}
+          </h3>
           {awards.length > 0 && (
-            <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{awards.length}</span>
+            <button
+              onClick={toggleAll}
+              className="text-xs font-semibold text-violet-600 hover:text-violet-700"
+            >
+              {picked.size === awards.length ? 'Clear all' : 'Select all'}
+            </button>
           )}
-        </h3>
+        </div>
         {awards.length === 0 ? (
           <p className="text-sm text-slate-400">No habit points waiting for approval.</p>
         ) : (
-          <div className="space-y-2">
-            {awards.map(a => (
-              <div key={a._id} className="flex items-center gap-2 rounded-2xl border border-slate-100 px-3 py-2">
-                <span className="text-lg select-none">{a.habitEmoji || '⭐'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-700 truncate">{a.userName} · {a.habitName}</p>
-                  <p className="text-xs text-slate-400">{a.date} · ⭐ {a.points}</p>
+          <>
+            {picked.size > 0 && (
+              <button
+                disabled={busy}
+                onClick={approveSelected}
+                className="flex items-center justify-center gap-1 w-full bg-green-500 text-white text-sm font-bold rounded-xl py-2.5 mb-3 hover:bg-green-600 disabled:opacity-50"
+              >
+                <Check size={15} /> Approve {picked.size} selected
+              </button>
+            )}
+            <div className="space-y-2">
+              {awards.map(a => (
+                <div
+                  key={a._id}
+                  className={`flex items-center gap-2 rounded-2xl border px-3 py-2 transition-colors ${
+                    picked.has(a._id) ? 'border-violet-300 bg-violet-50' : 'border-slate-100'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={picked.has(a._id)}
+                    onChange={() => togglePick(a._id)}
+                    className="w-4 h-4 accent-violet-600 cursor-pointer"
+                    aria-label={`Select ${a.userName} ${a.habitName}`}
+                  />
+                  <span className="text-lg select-none">{a.habitEmoji || '⭐'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-700 truncate">{a.userName} · {a.habitName}</p>
+                    <p className="text-xs text-slate-400">{a.date} · ⭐ {a.points}</p>
+                  </div>
+                  <button
+                    disabled={busy}
+                    onClick={() => reviewAward(a._id, 'approve')}
+                    className="flex items-center gap-1 bg-green-500 text-white text-sm font-bold rounded-xl px-3 py-1.5 hover:bg-green-600 disabled:opacity-50"
+                  >
+                    <Check size={15} /> Approve
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => reviewAward(a._id, 'reject')}
+                    className="flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl px-2.5 py-1.5 hover:bg-slate-200 disabled:opacity-50"
+                    aria-label="Reject"
+                  >
+                    <X size={15} />
+                  </button>
                 </div>
-                <button
-                  disabled={busy}
-                  onClick={() => reviewAward(a._id, 'approve')}
-                  className="flex items-center gap-1 bg-green-500 text-white text-sm font-bold rounded-xl px-3 py-1.5 hover:bg-green-600 disabled:opacity-50"
-                >
-                  <Check size={15} /> Approve
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => reviewAward(a._id, 'reject')}
-                  className="flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl px-2.5 py-1.5 hover:bg-slate-200 disabled:opacity-50"
-                  aria-label="Reject"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
