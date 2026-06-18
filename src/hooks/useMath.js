@@ -3,7 +3,8 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { pickQuestion } from '../lib/mathFacts';
+import { pickQuestion, factCountForMax } from '../lib/mathFacts';
+import { mulMaxForGrade } from '../lib/mathGrades';
 
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
 
@@ -24,6 +25,7 @@ export function useMath() {
   const { user } = useAuth() || {};
   const uid = user?._id ? String(user._id) : 'anon';
   const today = format(new Date(), 'yyyy-MM-dd');
+  const mulMax = mulMaxForGrade(user?.grade); // grade-based operand cap
 
   const [loading, setLoading] = useState(true);
   const [retired, setRetired] = useState(() => new Set());
@@ -41,10 +43,13 @@ export function useMath() {
   const flushing = useRef(false);
 
   const nextQuestion = useCallback((retiredSet) => {
-    const q = pickQuestion(retiredSet, lastKey.current);
+    const q = pickQuestion(retiredSet, lastKey.current, mulMax);
     lastKey.current = q?.key ?? null;
     setQuestion(q);
-  }, []);
+  }, [mulMax]);
+
+  // Re-pick when the grade cap changes mid-session (kid switches grade).
+  useEffect(() => { nextQuestion(retiredRef.current); }, [mulMax, nextQuestion]);
 
   // Apply a /state (or batch) payload to local state + cache it.
   const applyState = useCallback((data, { cache = true, pickNext = false } = {}) => {
@@ -174,6 +179,7 @@ export function useMath() {
     rewards,
     sleepoverPct: sleepover,
     retiredCount: retired.size,
+    totalFacts: factCountForMax(mulMax),
     submitAnswer,
     advance,
     redeem,

@@ -9,11 +9,13 @@ export function canonicalKey(a, b) {
   return `${Math.min(a, b)}x${Math.max(a, b)}`;
 }
 
-// All 190 unique facts as { a, b, key } with a <= b.
-export function generateAllFacts() {
+// All unique facts as { a, b, key } with a <= b, both operands in [2, max].
+// max defaults to the full range (20) → 190 facts; a grade cap shrinks the set.
+export function generateAllFacts(max = MAX_OPERAND) {
+  const cap = Math.min(max, MAX_OPERAND);
   const facts = [];
-  for (let a = MIN_OPERAND; a <= MAX_OPERAND; a++) {
-    for (let b = a; b <= MAX_OPERAND; b++) {
+  for (let a = MIN_OPERAND; a <= cap; a++) {
+    for (let b = a; b <= cap; b++) {
       facts.push({ a, b, key: canonicalKey(a, b) });
     }
   }
@@ -22,12 +24,17 @@ export function generateAllFacts() {
 
 const ALL_FACTS = generateAllFacts();
 
-// Pick the next question from the live pool (all facts minus retired keys),
+// Number of unique facts available at a given operand cap (for "facts left" display).
+export function factCountForMax(max = MAX_OPERAND) {
+  return generateAllFacts(max).length;
+}
+
+// Pick the next question from the live pool (facts within `max`, minus retired keys),
 // in a random orientation, avoiding an immediate repeat of `lastKey`.
 // Returns { a, b, key, product } or null when the pool is empty.
-export function pickQuestion(retiredKeys = [], lastKey = null) {
+export function pickQuestion(retiredKeys = [], lastKey = null, max = MAX_OPERAND) {
   const retired = retiredKeys instanceof Set ? retiredKeys : new Set(retiredKeys);
-  let pool = ALL_FACTS.filter(f => !retired.has(f.key));
+  let pool = generateAllFacts(max).filter(f => !retired.has(f.key));
   if (pool.length === 0) return null;
   if (pool.length > 1 && lastKey) {
     const trimmed = pool.filter(f => f.key !== lastKey);

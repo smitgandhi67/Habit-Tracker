@@ -2,7 +2,7 @@
 //   node src/lib/mathFacts.smoke.mjs
 // Exits 0 if all assertions pass, 1 otherwise.
 
-import { generateAllFacts, canonicalKey, pickQuestion, answerChoices, TOTAL_FACTS } from './mathFacts.js';
+import { generateAllFacts, canonicalKey, pickQuestion, answerChoices, factCountForMax, TOTAL_FACTS } from './mathFacts.js';
 
 let failures = 0;
 function assert(label, ok, detail) {
@@ -18,6 +18,19 @@ eq('TOTAL_FACTS', TOTAL_FACTS, 190);
 eq('all keys unique', new Set(facts.map(f => f.key)).size, 190);
 assert('all keys canonical (a<=b)', facts.every(f => f.a <= f.b), 'found a>b');
 eq('canonical commutative', canonicalKey(20, 2), canonicalKey(2, 20));
+
+// grade caps shrink the fact set: 2..9 → 8 values → 8*9/2 = 36 facts
+eq('factCountForMax(9) == 36',  factCountForMax(9), 36);
+eq('factCountForMax(12) == 66', factCountForMax(12), 66);
+eq('factCountForMax(20) == 190', factCountForMax(20), 190);
+assert('capped facts never exceed max', generateAllFacts(9).every(f => f.a <= 9 && f.b <= 9), 'found operand > 9');
+// pickQuestion respects the cap
+let capOk = true;
+for (let i = 0; i < 200; i++) {
+  const q = pickQuestion([], null, 9);
+  if (q.a > 9 || q.b > 9) { capOk = false; break; }
+}
+assert('pickQuestion respects max cap', capOk, 'returned operand > cap');
 
 // pickQuestion never returns a retired fact
 const retired = new Set(facts.slice(0, 189).map(f => f.key)); // leave exactly 1 live
