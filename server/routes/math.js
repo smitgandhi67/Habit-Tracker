@@ -21,6 +21,21 @@ const {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RETIRE_AT = 2; // first-try-corrects on distinct days needed to retire a fact for the week
+const OPS = ['mul', 'add', 'sub'];
+const ADDSUB_MAX = 100; // server-side sanity bound for add/sub operands (client caps tighter by grade)
+
+// Operand validity differs by operation: multiplication uses the 2..20 table universe
+// (mastery keys assume it); add/sub allow non-negative integers up to a sane bound.
+function validOperands(op, a, b) {
+  if (op === 'mul') return isValidOperand(a) && isValidOperand(b);
+  return Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a <= ADDSUB_MAX && b <= ADDSUB_MAX;
+}
+
+function isCorrectAnswer(op, a, b, answer) {
+  if (op === 'mul') return a * b === answer;
+  if (op === 'add') return a + b === answer;
+  return a - b === answer; // sub
+}
 
 // ---- helpers --------------------------------------------------------------
 
@@ -91,21 +106,20 @@ router.get('/state', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/math/answer — body { a, b, answer, firstTry, date }
-// Server validates correctness itself; never trusts a client-supplied verdict.
+// POST /api/math/answer — body { a, b, answer, firstTry, date, op? }
+// op is 'mul' (default), 'add', or 'sub'. Server validates correctness itself; never
+// trusts a client-supplied verdict. Weekly mastery applies to multiplication only.
 router.post('/answer', async (req, res, next) => {
   try {
-    const { a, b, answer, firstTry, date } = req.body || {};
-    if (!isValidOperand(a) || !isValidOperand(b)) {
-      return res.status(400).json({ error: 'a and b must be integers 2-20' });
-    }
+    const { a, b, answer, firstTry, date, op = 'mul' } = req.body || {};
+    if (!OPS.includes(op)) return res.status(400).json({ error: 'op must be mul, add, or sub' });
+    if (!validOperands(op, a, b)) return res.status(400).json({ error: 'invalid operands for operation' });
     if (!Number.isInteger(answer)) return res.status(400).json({ error: 'answer must be an integer' });
     if (!date || !ISO_DATE.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) required' });
 
     const userId = req.user._id;
-    const correct = a * b === answer;
-    const earns = correct && firstTry === true; // only first-try-correct earns points + mastery
-    const factKey = canonicalKey(a, b);
+    const correct = isCorrectAnswer(op, a, b, answer);
+    const earns = correct && firstTry === true; // only first-try-correct earns points (+ mastery for mul)
     const weekKey = isoWeekKey(date);
 
     // Daily counters: always attempted++, correct++ when it earns.
@@ -118,7 +132,7 @@ router.post('/answer', async (req, res, next) => {
     let summary;
     let retired = false;
     if (earns) {
-      // +1 point for every first-try-correct (no dedup, no daily cap).
+      // +1 point for every first-try-correct (no dedup, no daily cap), any operation.
       const reward = await MathReward.findOneAndUpdate(
         { userId },
         { $inc: { pointsEarned: 1 } },
@@ -126,24 +140,27 @@ router.post('/answer', async (req, res, next) => {
       );
       summary = rewardSummary(reward);
 
-      // Weekly mastery — only advances once per distinct day.
-      const fp = await MathFactProgress.findOneAndUpdate(
-        { userId, weekKey, factKey },
-        { $setOnInsert: { correctCount: 0, lastCorrectDate: null, retiredAt: null } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-      if (fp.lastCorrectDate !== date && !fp.retiredAt) {
-        fp.correctCount += 1;
-        fp.lastCorrectDate = date;
-        if (fp.correctCount >= RETIRE_AT) fp.retiredAt = new Date();
-        await fp.save();
+      // Weekly mastery — multiplication only, advances once per distinct day.
+      if (op === 'mul') {
+        const factKey = canonicalKey(a, b);
+        const fp = await MathFactProgress.findOneAndUpdate(
+          { userId, weekKey, factKey },
+          { $setOnInsert: { correctCount: 0, lastCorrectDate: null, retiredAt: null } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        if (fp.lastCorrectDate !== date && !fp.retiredAt) {
+          fp.correctCount += 1;
+          fp.lastCorrectDate = date;
+          if (fp.correctCount >= RETIRE_AT) fp.retiredAt = new Date();
+          await fp.save();
+        }
+        retired = !!fp.retiredAt;
       }
-      retired = !!fp.retiredAt;
     } else {
       summary = rewardSummary(await getReward(userId));
     }
 
-    res.json({ correct, retired, factKey, reward: summary });
+    res.json({ correct, retired, factKey: op === 'mul' ? canonicalKey(a, b) : null, reward: summary });
   } catch (err) { next(err); }
 });
 
@@ -160,8 +177,9 @@ router.post('/answer/batch', async (req, res, next) => {
     }
     if (answers.length > MAX_BATCH) return res.status(400).json({ error: `max ${MAX_BATCH} answers per batch` });
     for (const it of answers) {
-      if (!isValidOperand(it.a) || !isValidOperand(it.b) || !Number.isInteger(it.answer) || !it.date || !ISO_DATE.test(it.date)) {
-        return res.status(400).json({ error: 'each answer needs valid a,b (2-20), integer answer, and date' });
+      const op = it.op || 'mul';
+      if (!OPS.includes(op) || !validOperands(op, it.a, it.b) || !Number.isInteger(it.answer) || !it.date || !ISO_DATE.test(it.date)) {
+        return res.status(400).json({ error: 'each answer needs valid op, operands, integer answer, and date' });
       }
     }
 
@@ -178,12 +196,13 @@ router.post('/answer/batch', async (req, res, next) => {
     for (const [date, items] of byDate) {
       const weekKey = isoWeekKey(date);
       let attempted = 0, correct = 0;
-      const earnedFacts = new Set(); // distinct facts earned this date → 1 mastery step each
+      const earnedFacts = new Set(); // distinct multiplication facts earned → 1 mastery step each
       for (const it of items) {
+        const op = it.op || 'mul';
         attempted += 1;
-        if (it.a * it.b === it.answer && it.firstTry === true) {
+        if (isCorrectAnswer(op, it.a, it.b, it.answer) && it.firstTry === true) {
           correct += 1;
-          earnedFacts.add(canonicalKey(it.a, it.b));
+          if (op === 'mul') earnedFacts.add(canonicalKey(it.a, it.b));
         }
       }
       pointsInc += correct;
