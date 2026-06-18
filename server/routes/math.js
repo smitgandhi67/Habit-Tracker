@@ -388,22 +388,40 @@ router.get('/admin/config', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /api/math/admin/config — body { rewards: [{ key, label, costPoints, unit }] }
+// Slugify a label into a stable reward key: lowercase alphanumerics joined by '-'.
+function slugifyKey(s) {
+  const slug = String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || 'reward';
+}
+
+// PUT /api/math/admin/config — body { rewards: [{ key?, label, costPoints, unit }] }.
+// Parent-managed reward catalog. New rewards may omit `key` — one is generated from the
+// label and de-duplicated. Costs are points-per-unit ('event' one-shot | 'minute' qty).
 router.put('/admin/config', requireAdmin, async (req, res, next) => {
   try {
     const { rewards } = req.body || {};
     if (!Array.isArray(rewards) || rewards.length === 0) {
       return res.status(400).json({ error: 'rewards must be a non-empty array' });
     }
+    const seen = new Set();
+    const clean = [];
     for (const r of rewards) {
-      if (!r.key || !r.label) return res.status(400).json({ error: 'each reward needs key and label' });
+      const label = String(r.label || '').trim();
+      if (!label) return res.status(400).json({ error: 'each reward needs a label' });
+      if (label.length > 60) return res.status(400).json({ error: 'label too long (max 60)' });
       if (!Number.isInteger(r.costPoints) || r.costPoints < 1) {
-        return res.status(400).json({ error: `costPoints for ${r.key} must be a positive integer` });
+        return res.status(400).json({ error: `costPoints for "${label}" must be a positive integer` });
       }
+      // Use the provided key if any, else derive from the label; ensure uniqueness.
+      let key = slugifyKey(r.key || label);
+      if (seen.has(key)) {
+        let n = 2;
+        while (seen.has(`${key}-${n}`)) n++;
+        key = `${key}-${n}`;
+      }
+      seen.add(key);
+      clean.push({ key, label, costPoints: r.costPoints, unit: r.unit === 'minute' ? 'minute' : 'event' });
     }
-    const clean = rewards.map(r => ({
-      key: r.key, label: r.label, costPoints: r.costPoints, unit: r.unit === 'minute' ? 'minute' : 'event',
-    }));
     const cfg = await MathRewardConfig.findOneAndUpdate(
       { singleton: 'config' },
       { rewards: clean },
