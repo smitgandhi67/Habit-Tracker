@@ -28,7 +28,9 @@ export default function PlanEditor({ isAdmin, onClose }) {
     fetchExerciseList().then(setLibrary);
   }, [fetchExerciseList]);
 
-  // Load draft when selection changes.
+  // Load draft when selection changes — intentional reset-on-change: the draft is an
+  // editable working copy that must be re-cloned whenever the selected plan changes.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!selectedId) { setDraft(null); return; }
     const plan = plans.find(p => p._id === selectedId);
@@ -37,6 +39,7 @@ export default function PlanEditor({ isAdmin, onClose }) {
     setDraft(JSON.parse(JSON.stringify(plan)));
     setOpenDays({});
   }, [selectedId, plans]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const canWrite = useMemo(() => {
     if (!draft) return false;

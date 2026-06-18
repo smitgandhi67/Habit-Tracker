@@ -40,7 +40,7 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
   const [exerciseName, setExerciseName] = useState(initialExerciseName);
   const [feel,         setFeel]         = useState(initialFeel);
   const [sets,         setSets]         = useState(initialSets);
-  const [planDayLabel, setPlanDayLabel] = useState(entry?.planDayLabel ?? prefill?.planDayLabel ?? '');
+  const [planDayLabel] = useState(entry?.planDayLabel ?? prefill?.planDayLabel ?? ''); // read-only badge; never reset after mount
   const [safetyChecks, setSafetyChecks] = useState(() => ({
     ...emptySafetyChecks(),
     ...(entry?.safetyChecks || {}),
@@ -56,7 +56,9 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
   // edit/prefill — otherwise it would get cleared the moment exercises load.
   const skipInitialBodyPartReset = useRef(!!initialExerciseName);
 
-  // Load exercises when body part changes
+  // Load exercises when body part changes. Resets dependent fields synchronously so
+  // stale exercise/history never flashes; this is an intentional reset-on-change effect.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!bodyPart) { setExercises([]); setExerciseName(''); return; }
     setExLoading(true);
@@ -71,6 +73,7 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
       setExLoading(false);
     });
   }, [bodyPart]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load history for pre-populated exercise (edit OR plan-driven prefill).
   useEffect(() => {

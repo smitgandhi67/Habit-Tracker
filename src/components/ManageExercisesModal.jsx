@@ -22,9 +22,17 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
   const [metaBodyPart,   setMetaBodyPart]  = useState('');
   const [savingMeta,     setSavingMeta]    = useState(false);
 
-  useEffect(() => {
-    load(selectedPart);
-  }, [selectedPart]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Declared before the effect that calls it to avoid use-before-declaration.
+  async function load(bp) {
+    setLoading(true);
+    const list = await fetchExerciseList(bp);
+    setExercises(list);
+    setLoading(false);
+  }
+
+  // Reload the exercise list whenever the selected body part changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { load(selectedPart); }, [selectedPart]);
 
   useEffect(() => {
     fetchExerciseList().then(setAllExercises);
@@ -37,13 +45,6 @@ export default function ManageExercisesModal({ fetchExerciseList, addExerciseTem
     }
     return map;
   }, [allExercises]);
-
-  async function load(bp) {
-    setLoading(true);
-    const list = await fetchExerciseList(bp);
-    setExercises(list);
-    setLoading(false);
-  }
 
   async function handleAdd() {
     const name = newName.trim();

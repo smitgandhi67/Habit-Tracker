@@ -10,7 +10,7 @@ export default function Today() {
   const [date, setDate] = useState(startOfDay(new Date()));
   const { habitsForDate, getStatus, getValue, cycleStatus, setLogValue, loading, ensureLogsForDate } = useHabitsContext();
 
-  useEffect(() => { ensureLogsForDate(date); }, [date]);
+  useEffect(() => { ensureLogsForDate(date); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const habits = habitsForDate(date);
   const dateStr = format(date, 'yyyy-MM-dd');

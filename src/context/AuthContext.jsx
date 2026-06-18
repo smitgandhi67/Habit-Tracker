@@ -2,6 +2,8 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { usermavenClient } from '../lib/usermaven';
 
 const AuthContext = createContext(null);
+// Co-located hook for the provider below; intentionally exported alongside the component.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '';
