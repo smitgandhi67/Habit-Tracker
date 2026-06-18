@@ -521,4 +521,56 @@ router.post('/admin/habit-awards/:id/reject', requireAdmin, async (req, res, nex
   } catch (err) { next(err); }
 });
 
+// POST /api/math/admin/habit-awards/approve-batch — body { ids: [...] }. Approves many
+// pending awards in a single round trip (saves Lambda + Mongo cost vs N calls). Atomic:
+// a guarded updateMany flips only still-pending rows, then a unique reviewedAt stamp lets
+// us re-read exactly the rows THIS request transitioned (race-safe under concurrent admins
+// and idempotent — already-approved/rejected/missing ids are skipped, never double-credited).
+const APPROVE_BATCH_MAX = 200;
+router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
+    if (!ids || ids.length === 0) return res.status(400).json({ error: 'ids must be a non-empty array' });
+    if (ids.length > APPROVE_BATCH_MAX) return res.status(400).json({ error: `Cannot approve more than ${APPROVE_BATCH_MAX} at once` });
+    const validIds = [...new Set(ids.filter(id => mongoose.isValidObjectId(id)).map(String))];
+    if (validIds.length === 0) return res.status(400).json({ error: 'no valid award ids' });
+
+    const ts = new Date();
+    await HabitPointAward.updateMany(
+      { _id: { $in: validIds }, status: 'pending' },
+      { $set: { status: 'approved', reviewedBy: req.user.email, reviewedAt: ts } }
+    );
+    const claimed = await HabitPointAward.find(
+      { _id: { $in: validIds }, status: 'approved', reviewedBy: req.user.email, reviewedAt: ts }
+    ).lean();
+
+    if (claimed.length === 0) {
+      return res.json({ approved: 0, skipped: validIds.length, ids: [] });
+    }
+
+    // Sum points per kid → one $inc per distinct kid (bulk), one audit row per credited award.
+    const perUser = new Map();
+    for (const a of claimed) {
+      if (a.points > 0) perUser.set(String(a.userId), (perUser.get(String(a.userId)) || 0) + a.points);
+    }
+    if (perUser.size > 0) {
+      await MathReward.bulkWrite([...perUser].map(([userId, pts]) => ({
+        updateOne: {
+          filter: { userId },
+          update: { $inc: { pointsEarned: pts }, $setOnInsert: { pointsSpent: 0 } },
+          upsert: true,
+        },
+      })));
+      await MathPointAdjustment.insertMany(
+        claimed.filter(a => a.points > 0).map(a => ({
+          userId: a.userId, adminEmail: req.user.email, type: 'add',
+          amount: a.points, reason: `Habit award ${a.date}`,
+        }))
+      );
+    }
+
+    res.json({ approved: claimed.length, skipped: validIds.length - claimed.length, ids: claimed.map(a => a._id) });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
