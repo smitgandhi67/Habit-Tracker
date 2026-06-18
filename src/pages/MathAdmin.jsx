@@ -116,14 +116,19 @@ export default function MathAdmin() {
     if (ids.length === 0) return;
     setBusy(true);
     try {
-      const res = await apiFetch('/api/math/admin/habit-awards/approve-batch', {
-        method: 'POST', body: JSON.stringify({ ids }),
-      });
+      // Send in chunks of 200 to stay within the server's per-request cap.
+      let approved = 0, skipped = 0;
+      for (let i = 0; i < ids.length; i += 200) {
+        const res = await apiFetch('/api/math/admin/habit-awards/approve-batch', {
+          method: 'POST', body: JSON.stringify({ ids: ids.slice(i, i + 200) }),
+        });
+        approved += res.approved || 0;
+        skipped += res.skipped || 0;
+      }
       await loadAwards();   // single refresh for the whole batch
       await loadUsers();    // balances changed
       setPicked(new Set());
-      const skippedNote = res.skipped ? ` (${res.skipped} skipped)` : '';
-      toast.success(`Approved ${res.approved} ⭐${skippedNote}`);
+      toast.success(`Approved ${approved} ⭐${skipped ? ` (${skipped} skipped)` : ''}`);
     } catch (err) {
       toast.error(String(err.message || 'Failed').slice(0, 120));
     } finally { setBusy(false); }

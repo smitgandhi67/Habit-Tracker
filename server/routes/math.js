@@ -491,15 +491,24 @@ router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, ne
     }
 
     if (award.points > 0) {
-      await MathReward.findOneAndUpdate(
-        { userId: award.userId },
-        { $inc: { pointsEarned: award.points } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-      await MathPointAdjustment.create({
-        userId: award.userId, adminEmail: req.user.email, type: 'add',
-        amount: award.points, reason: `Habit award ${award.date}`,
-      });
+      try {
+        await MathReward.findOneAndUpdate(
+          { userId: award.userId },
+          { $inc: { pointsEarned: award.points } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        await MathPointAdjustment.create({
+          userId: award.userId, adminEmail: req.user.email, type: 'add',
+          amount: award.points, reason: `Habit award ${award.date}`,
+        });
+      } catch (creditErr) {
+        // Revert the flip so the award isn't left approved-but-uncredited; safe to retry.
+        await HabitPointAward.updateOne(
+          { _id: award._id },
+          { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+        );
+        throw creditErr;
+      }
     }
     res.json({ award });
   } catch (err) { next(err); }
@@ -554,19 +563,29 @@ router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, 
       if (a.points > 0) perUser.set(String(a.userId), (perUser.get(String(a.userId)) || 0) + a.points);
     }
     if (perUser.size > 0) {
-      await MathReward.bulkWrite([...perUser].map(([userId, pts]) => ({
-        updateOne: {
-          filter: { userId },
-          update: { $inc: { pointsEarned: pts }, $setOnInsert: { pointsSpent: 0 } },
-          upsert: true,
-        },
-      })));
-      await MathPointAdjustment.insertMany(
-        claimed.filter(a => a.points > 0).map(a => ({
-          userId: a.userId, adminEmail: req.user.email, type: 'add',
-          amount: a.points, reason: `Habit award ${a.date}`,
-        }))
-      );
+      try {
+        await MathReward.bulkWrite([...perUser].map(([userId, pts]) => ({
+          updateOne: {
+            filter: { userId },
+            update: { $inc: { pointsEarned: pts }, $setOnInsert: { pointsSpent: 0 } },
+            upsert: true,
+          },
+        })));
+        await MathPointAdjustment.insertMany(
+          claimed.filter(a => a.points > 0).map(a => ({
+            userId: a.userId, adminEmail: req.user.email, type: 'add',
+            amount: a.points, reason: `Habit award ${a.date}`,
+          }))
+        );
+      } catch (creditErr) {
+        // Crediting failed after the status flip — revert these awards to pending so they
+        // aren't left approved-but-uncredited. Safe to retry the batch afterward.
+        await HabitPointAward.updateMany(
+          { _id: { $in: claimed.map(a => a._id) } },
+          { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+        );
+        throw creditErr;
+      }
     }
 
     res.json({ approved: claimed.length, skipped: validIds.length - claimed.length, ids: claimed.map(a => a._id) });
