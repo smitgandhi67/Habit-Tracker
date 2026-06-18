@@ -474,14 +474,21 @@ router.get('/admin/habit-awards', requireAdmin, async (req, res, next) => {
 router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid award id required' });
-    const award = await HabitPointAward.findById(req.params.id);
-    if (!award) return res.status(404).json({ error: 'Award not found' });
-    if (award.status === 'approved') return res.json({ award }); // already credited — no double credit
-
-    award.status = 'approved';
-    award.reviewedBy = req.user.email;
-    award.reviewedAt = new Date();
-    await award.save();
+    // Atomic claim: only the pending→approved transition proceeds. Concurrent approves
+    // of the same award (double-click, retried request) can never double-credit the pool
+    // because just one updateOne wins the guarded filter.
+    const award = await HabitPointAward.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      { $set: { status: 'approved', reviewedBy: req.user.email, reviewedAt: new Date() } },
+      { new: true }
+    );
+    if (!award) {
+      // Didn't transition: missing, or already approved/rejected. Distinguish for the client.
+      const existing = await HabitPointAward.findById(req.params.id).lean();
+      if (!existing) return res.status(404).json({ error: 'Award not found' });
+      if (existing.status === 'approved') return res.json({ award: existing }); // idempotent, no double credit
+      return res.status(409).json({ error: `Cannot approve a ${existing.status} award` });
+    }
 
     if (award.points > 0) {
       await MathReward.findOneAndUpdate(
