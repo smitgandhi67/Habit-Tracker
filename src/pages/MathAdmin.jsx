@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2 } from 'lucide-react';
+import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2, History } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 import { GRADES } from '../lib/mathGrades';
+import PointsLedger from '../components/PointsLedger';
 
 // Parent-only console: pick a kid, see their points, adjust them, assign habit
 // points, approve habit awards, and edit reward costs.
@@ -422,6 +423,17 @@ export default function MathAdmin() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Points history for the selected kid */}
+      {selected && (
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 mb-4">
+          <h3 className="font-bold text-slate-700 mb-1 flex items-center gap-2">
+            <History size={16} className="text-violet-500" /> Points history — {selected.name}
+          </h3>
+          <p className="text-xs text-slate-400 mb-3">Where points came from: earnings, approvals, declines, adjustments, redeems.</p>
+          <PointsLedger key={selected._id} endpoint={`/api/math/admin/ledger?userId=${selected._id}`} />
         </div>
       )}
 
