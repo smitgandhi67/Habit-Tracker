@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, ShieldCheck, LogOut } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, ShieldCheck, LogOut, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 const NAV = [
   { to: '/today',   icon: CalendarDays, label: 'Today'   },
@@ -16,11 +17,34 @@ const NAV = [
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
+  const [balance, setBalance] = useState(null);
+  const location = useLocation();
+
+  // Keep the points badge fresh: refetch on mount and whenever the route changes
+  // (covers approve/redeem actions that happen on other pages). Failures hide it.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/math/state')
+      .then(d => { if (!cancelled) setBalance(d?.balance ?? null); })
+      .catch(() => { if (!cancelled) setBalance(null); });
+    return () => { cancelled = true; };
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen flex flex-col max-w-lg mx-auto relative">
       {/* Top bar */}
-      <header className="flex items-center justify-end px-4 pt-4 pb-1">
+      <header className="flex items-center justify-between px-4 pt-4 pb-1">
+        {balance != null ? (
+          <NavLink
+            to="/math"
+            className="flex items-center gap-1 rounded-full bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold text-sm pl-2 pr-3 py-1 transition-colors"
+          >
+            <Star size={15} className="fill-violet-500 text-violet-500" />
+            <span className="tabular-nums">{balance}</span>
+          </NavLink>
+        ) : (
+          <span />
+        )}
         <div className="relative">
           <button
             onClick={() => setShowMenu(p => !p)}

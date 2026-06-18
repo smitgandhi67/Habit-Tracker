@@ -318,7 +318,7 @@ router.get('/admin/users', requireAdmin, async (req, res, next) => {
   try {
     const cfg = await getConfig();
     const [users, rewards] = await Promise.all([
-      User.find().select('name email').lean(),
+      User.find().select('name email grade').lean(),
       MathReward.find().lean(),
     ]);
     const byUser = new Map(rewards.map(r => [String(r.userId), r]));
@@ -328,11 +328,27 @@ router.get('/admin/users', requireAdmin, async (req, res, next) => {
         _id: u._id,
         name: u.name,
         email: u.email,
+        grade: u.grade ?? null,
         ...summary,
         sleepoverPct: sleepoverPct(summary.balance, cfg.rewards),
       };
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     res.json(list);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/math/admin/grade — body { userId, grade: 2|3|4|5|null }. Parent sets a
+// kid's school grade (drives the math difficulty caps). Admin-only.
+router.put('/admin/grade', requireAdmin, async (req, res, next) => {
+  try {
+    const { userId, grade } = req.body || {};
+    if (!mongoose.isValidObjectId(userId)) return res.status(400).json({ error: 'valid userId required' });
+    if (grade !== null && ![2, 3, 4, 5].includes(grade)) {
+      return res.status(400).json({ error: 'grade must be 2, 3, 4, 5, or null' });
+    }
+    const user = await User.findByIdAndUpdate(userId, { grade }, { new: true }).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ _id: user._id, grade: user.grade ?? null });
   } catch (err) { next(err); }
 });
 

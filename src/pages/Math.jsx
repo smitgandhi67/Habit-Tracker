@@ -5,7 +5,6 @@ import { useMath } from '../hooks/useMath';
 import { choicesForAnswer } from '../lib/mathFacts';
 import { affordableQty } from '../lib/mathRewards';
 import { timerSecondsFor } from '../lib/mathTimer';
-import { GRADES } from '../lib/mathGrades';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
@@ -17,7 +16,7 @@ const OPS = [
 const OP_SYMBOL = { mul: '×', add: '+', sub: '−' };
 
 export default function MathPage() {
-  const { user, updateGrade } = useAuth();
+  const { user } = useAuth();
   const {
     loading, question, session, reward, rewards, sleepoverPct,
     retiredCount, totalFacts, op, setOp, submitAnswer, advance, redeem, flush,
@@ -100,25 +99,6 @@ export default function MathPage() {
               <span className="text-lg leading-none">{o.symbol}</span> {o.label}
             </button>
           ))}
-        </div>
-
-        {/* Grade selector — sets the difficulty cap */}
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs font-medium text-slate-400">Grade</span>
-          {GRADES.map(g => (
-            <button
-              key={g}
-              onClick={() => updateGrade(user?.grade === g ? null : g)}
-              className={`w-9 h-9 rounded-full text-sm font-bold transition-colors ${
-                user?.grade === g
-                  ? 'bg-violet-600 text-white'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              }`}
-            >
-              {g}
-            </button>
-          ))}
-          {!user?.grade && <span className="text-xs text-amber-600 font-medium">pick your grade</span>}
         </div>
       </header>
 

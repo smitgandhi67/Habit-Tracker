@@ -107,20 +107,6 @@ export function AuthProvider({ children }) {
     return saved;
   }, []);
 
-  const updateGrade = useCallback(async (grade) => {
-    if (grade !== null && ![2, 3, 4, 5].includes(grade)) return;
-    const res = await fetch(`${BASE}/api/auth/grade`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ grade }),
-    });
-    if (!res.ok) throw new Error('Failed to update grade');
-    const { grade: saved } = await res.json();
-    setUser(prev => prev ? { ...prev, grade: saved } : prev);
-    return saved;
-  }, []);
-
   const logout = useCallback(async () => {
     await fetch(`${BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
@@ -128,7 +114,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit, updateLengthUnit, updateGrade }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit, updateLengthUnit }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { Minus, Plus, RotateCcw, Save, Check, X, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
+import { GRADES } from '../lib/mathGrades';
 
 // Parent-only console: pick a kid, see their points, adjust them, assign habit
 // points, approve habit awards, and edit reward costs.
@@ -72,6 +73,22 @@ export default function MathAdmin() {
       });
       setHabits(hs => hs.map(h => (h._id === habitId ? { ...h, points, draft: String(points) } : h)));
       toast.success('Saved');
+    } catch (err) {
+      toast.error(String(err.message || 'Failed').slice(0, 120));
+    } finally { setBusy(false); }
+  }
+
+  async function setGrade(grade) {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const { grade: saved } = await apiFetch('/api/math/admin/grade', {
+        method: 'PUT',
+        body: JSON.stringify({ userId: selected._id, grade }),
+      });
+      setSelected(prev => (prev ? { ...prev, grade: saved } : prev));
+      setUsers(us => us.map(u => (u._id === selected._id ? { ...u, grade: saved } : u)));
+      toast.success(saved ? `Grade ${saved}` : 'Grade cleared');
     } catch (err) {
       toast.error(String(err.message || 'Failed').slice(0, 120));
     } finally { setBusy(false); }
@@ -215,6 +232,26 @@ export default function MathAdmin() {
             Earned <b>{selected.pointsEarned}</b> · Spent <b>{selected.pointsSpent}</b> · Balance{' '}
             <b className="text-violet-600">{selected.balance}</b>
           </p>
+
+          {/* School grade — drives the math difficulty cap */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xs font-medium text-slate-400">Grade</span>
+            {GRADES.map(g => (
+              <button
+                key={g}
+                disabled={busy}
+                onClick={() => setGrade(selected.grade === g ? null : g)}
+                className={`w-9 h-9 rounded-full text-sm font-bold transition-colors disabled:opacity-50 ${
+                  selected.grade === g
+                    ? 'bg-violet-600 text-white'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+            {!selected.grade && <span className="text-xs text-amber-600 font-medium">no cap (full range)</span>}
+          </div>
 
           <div className="flex gap-2 mb-3">
             <input
