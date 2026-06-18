@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { format, addDays, subDays, isToday, startOfDay } from 'date-fns';
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { useHabitsContext } from '../hooks/useHabits';
 import HabitCard from '../components/HabitCard';
 import { HabitListSkeleton } from '../components/Skeleton';
+import { apiFetch } from '../lib/api';
 
 export default function Today() {
   const [date, setDate] = useState(startOfDay(new Date()));
@@ -12,6 +13,27 @@ export default function Today() {
   useEffect(() => { ensureLogsForDate(date); }, [date]);
 
   const habits = habitsForDate(date);
+  const dateStr = format(date, 'yyyy-MM-dd');
+
+  // Habit-points awards for the viewed date, keyed by habitId. Refetched when the
+  // date or any completion state changes (a 'done' creates a pending award server-side).
+  const [awards, setAwards] = useState({});
+  const statusSig = useMemo(
+    () => habits.map(h => `${h._id}:${getStatus(h._id, date)}`).join('|'),
+    [habits, getStatus, date]
+  );
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/api/math/awards?dates=${dateStr}`)
+      .then(list => {
+        if (cancelled) return;
+        const map = {};
+        for (const a of list) map[a.habitId] = a;
+        setAwards(map);
+      })
+      .catch(() => { if (!cancelled) setAwards({}); });
+    return () => { cancelled = true; };
+  }, [dateStr, statusSig]);
   const done  = habits.filter(h => getStatus(h._id, date) === 'done').length;
   const half  = habits.filter(h => getStatus(h._id, date) === 'half_done').length;
   const total = habits.length;
@@ -114,6 +136,7 @@ export default function Today() {
               onCycle={() => cycleStatus(habit._id, date)}
               value={getValue(habit._id, date)}
               onValueChange={(val) => setLogValue(habit._id, date, val)}
+              award={awards[habit._id]}
             />
           ))}
         </div>

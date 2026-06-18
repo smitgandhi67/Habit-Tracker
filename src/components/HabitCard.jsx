@@ -59,9 +59,20 @@ function ValueInput({ config, value, onChange }) {
   return null;
 }
 
-export default function HabitCard({ habit, status, onCycle, value, onValueChange }) {
+// Approval-state copy shown under a points-bearing habit once it's marked done.
+const AWARD_TEXT = {
+  pending:  { color: 'text-amber-600',  label: 'waiting for parent approval' },
+  approved: { color: 'text-violet-600', label: 'points approved!' },
+  rejected: { color: 'text-slate-400',  label: 'points not approved' },
+};
+
+export default function HabitCard({ habit, status, onCycle, value, onValueChange, award }) {
   const s = STATUS[status] || STATUS.not_started;
   const hasConfig = !!habit.config?.type;
+  const pts = habit.points || 0;
+  // While done, an award row exists; if it hasn't synced yet, assume pending.
+  const awardState = status === 'done' && pts > 0 ? (award?.status || 'pending') : null;
+  const aw = awardState ? AWARD_TEXT[awardState] : null;
 
   return (
     <div className={`w-full rounded-2xl p-4 shadow-sm border border-slate-100 transition-all duration-200 ${s.cardBg}`}>
@@ -71,8 +82,16 @@ export default function HabitCard({ habit, status, onCycle, value, onValueChange
       >
         <span className="text-2xl select-none">{habit.emoji}</span>
         <div className="flex-1 text-left">
-          <p className="font-semibold text-slate-800 leading-tight">{habit.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-slate-800 leading-tight">{habit.name}</p>
+            {pts > 0 && (
+              <span className="shrink-0 inline-flex items-center gap-0.5 text-[11px] font-bold text-violet-700 bg-violet-100 rounded-full px-1.5 py-0.5">
+                ⭐ {pts}
+              </span>
+            )}
+          </div>
           <p className={`text-xs mt-0.5 font-medium ${s.textColor}`}>{s.label}</p>
+          {aw && <p className={`text-xs mt-0.5 font-medium ${aw.color}`}>⭐ {pts} · {aw.label}</p>}
         </div>
         <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-lg transition-all duration-200 shrink-0 ${s.ring}`}>
           {s.icon ?? <span className="w-2 h-2 rounded-full bg-slate-300" />}

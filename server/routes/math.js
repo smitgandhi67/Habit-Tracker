@@ -278,6 +278,20 @@ router.get('/progress', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/math/awards?dates=d1,d2 — the signed-in kid's own habit-point awards
+// (status + points per habit/day), so habit cards can show pending/approved state.
+router.get('/awards', async (req, res, next) => {
+  try {
+    const { dates } = req.query;
+    if (!dates) return res.status(400).json({ error: 'dates query param required' });
+    const list = dates.split(',').slice(0, 200).filter(d => ISO_DATE.test(d));
+    if (list.length === 0) return res.json([]);
+    const awards = await HabitPointAward.find({ userId: req.user._id, date: { $in: list } })
+      .select('habitId date points status').lean();
+    res.json(awards);
+  } catch (err) { next(err); }
+});
+
 // ---- admin routes ---------------------------------------------------------
 
 // GET /api/math/admin/users — every user with their points summary.
