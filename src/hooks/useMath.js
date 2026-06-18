@@ -3,8 +3,8 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { pickQuestion, factCountForMax } from '../lib/mathFacts';
-import { mulMaxForGrade } from '../lib/mathGrades';
+import { pickQuestion, pickArithmetic, factCountForMax } from '../lib/mathFacts';
+import { mulMaxForGrade, addSubMaxForGrade } from '../lib/mathGrades';
 
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
 
@@ -25,7 +25,8 @@ export function useMath() {
   const { user } = useAuth() || {};
   const uid = user?._id ? String(user._id) : 'anon';
   const today = format(new Date(), 'yyyy-MM-dd');
-  const mulMax = mulMaxForGrade(user?.grade); // grade-based operand cap
+  const mulMax = mulMaxForGrade(user?.grade);       // grade-based multiplication cap
+  const addSubMax = addSubMaxForGrade(user?.grade); // grade-based add/sub cap
 
   const [loading, setLoading] = useState(true);
   const [retired, setRetired] = useState(() => new Set());
@@ -36,6 +37,7 @@ export function useMath() {
 
   const [question, setQuestion] = useState(null);
   const [session, setSession] = useState({ attempted: 0, correct: 0, points: 0 });
+  const [op, setOp] = useState('mul'); // 'mul' | 'add' | 'sub'
 
   const lastKey = useRef(null);
   const retiredRef = useRef(retired);   // freshest retired set for question picking
@@ -43,13 +45,15 @@ export function useMath() {
   const flushing = useRef(false);
 
   const nextQuestion = useCallback((retiredSet) => {
-    const q = pickQuestion(retiredSet, lastKey.current, mulMax);
+    const q = op === 'mul'
+      ? pickQuestion(retiredSet, lastKey.current, mulMax)
+      : pickArithmetic(op, addSubMax, lastKey.current);
     lastKey.current = q?.key ?? null;
     setQuestion(q);
-  }, [mulMax]);
+  }, [op, mulMax, addSubMax]);
 
-  // Re-pick when the grade cap changes mid-session (kid switches grade).
-  useEffect(() => { nextQuestion(retiredRef.current); }, [mulMax, nextQuestion]);
+  // Re-pick when the operation or grade cap changes (kid switches op/grade).
+  useEffect(() => { nextQuestion(retiredRef.current); }, [nextQuestion]);
 
   // Apply a /state (or batch) payload to local state + cache it.
   const applyState = useCallback((data, { cache = true, pickNext = false } = {}) => {
@@ -124,15 +128,15 @@ export function useMath() {
     return () => { document.removeEventListener('visibilitychange', onHide); flush(); };
   }, [flush]);
 
-  // Grade locally (the product is known client-side) → instant feedback, no await.
+  // Grade locally (the answer is known client-side) → instant feedback, no await.
   // Returns { correct } synchronously; the server re-grades on the next flush.
   const submitAnswer = useCallback((value, firstTry) => {
     if (!question) return { correct: false };
     const answer = Number(value);
-    const correct = answer === question.product;
+    const correct = answer === question.answer;
     const earns = correct && firstTry === true;
 
-    buffer.current.push({ a: question.a, b: question.b, answer, firstTry: !!firstTry, date: today });
+    buffer.current.push({ a: question.a, b: question.b, answer, firstTry: !!firstTry, date: today, op: question.op });
     writeLS(bufferKey(uid), buffer.current);
 
     setSession(s => ({
@@ -180,6 +184,8 @@ export function useMath() {
     sleepoverPct: sleepover,
     retiredCount: retired.size,
     totalFacts: factCountForMax(mulMax),
+    op,
+    setOp,
     submitAnswer,
     advance,
     redeem,

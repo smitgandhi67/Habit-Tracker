@@ -2,7 +2,7 @@
 //   node src/lib/mathFacts.smoke.mjs
 // Exits 0 if all assertions pass, 1 otherwise.
 
-import { generateAllFacts, canonicalKey, pickQuestion, answerChoices, factCountForMax, TOTAL_FACTS } from './mathFacts.js';
+import { generateAllFacts, canonicalKey, pickQuestion, answerChoices, choicesForAnswer, pickArithmetic, factCountForMax, TOTAL_FACTS } from './mathFacts.js';
 
 let failures = 0;
 function assert(label, ok, detail) {
@@ -68,6 +68,30 @@ assert('answerChoices all positive', choices.every(c => c > 0), `got ${JSON.stri
 const small = answerChoices(2, 2);
 eq('small fact 4 distinct', new Set(small).size, 4);
 assert('small fact all positive', small.every(c => c > 0), `got ${JSON.stringify(small)}`);
+
+// addition: a+b within cap, answer matches, never an immediate repeat
+let addOk = true, addLast = null;
+for (let i = 0; i < 400; i++) {
+  const q = pickArithmetic('add', 20, addLast);
+  if (q.a + q.b > 20 || q.answer !== q.a + q.b || q.op !== 'add' || q.key === addLast) { addOk = false; break; }
+  addLast = q.key;
+}
+assert('add within cap, answer correct, no repeat', addOk, 'add generation invariant broke');
+
+// subtraction: non-negative result within cap
+let subOk = true;
+for (let i = 0; i < 400; i++) {
+  const q = pickArithmetic('sub', 20, null);
+  if (q.a > 20 || q.b > q.a || q.answer !== q.a - q.b || q.answer < 0 || q.op !== 'sub') { subOk = false; break; }
+}
+assert('sub non-negative within cap, answer correct', subOk, 'sub generation invariant broke');
+
+// generic choices include the correct value and are distinct
+const gc = choicesForAnswer(17, 8, 9);
+eq('choicesForAnswer length 4', gc.length, 4);
+eq('choicesForAnswer distinct', new Set(gc).size, 4);
+assert('choicesForAnswer includes correct', gc.includes(17), JSON.stringify(gc));
+assert('choicesForAnswer non-negative', gc.every(c => c >= 0), JSON.stringify(gc));
 
 console.log(failures === 0 ? '\nAll smoke checks passed.' : `\n${failures} failures.`);
 process.exit(failures === 0 ? 0 : 1);

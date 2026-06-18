@@ -2,18 +2,25 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { format, subDays } from 'date-fns';
 import { Check, X, Tv, Tent, Trophy, Sparkles } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
-import { answerChoices } from '../lib/mathFacts';
+import { choicesForAnswer } from '../lib/mathFacts';
 import { affordableQty } from '../lib/mathRewards';
 import { timerSecondsFor } from '../lib/mathTimer';
 import { GRADES } from '../lib/mathGrades';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
+const OPS = [
+  { key: 'mul', symbol: '×', label: 'Multiply' },
+  { key: 'add', symbol: '+', label: 'Add' },
+  { key: 'sub', symbol: '−', label: 'Subtract' },
+];
+const OP_SYMBOL = { mul: '×', add: '+', sub: '−' };
+
 export default function MathPage() {
   const { user, updateGrade } = useAuth();
   const {
     loading, question, session, reward, rewards, sleepoverPct,
-    retiredCount, totalFacts, submitAnswer, advance, redeem, flush,
+    retiredCount, totalFacts, op, setOp, submitAnswer, advance, redeem, flush,
   } = useMath();
 
   const [typed, setTyped] = useState('');
@@ -22,7 +29,7 @@ export default function MathPage() {
   const inputRef = useRef(null);
 
   const choices = useMemo(
-    () => (question ? answerChoices(question.a, question.b) : []),
+    () => (question ? choicesForAnswer(question.answer, question.a, question.b) : []),
     [question]
   );
 
@@ -64,7 +71,7 @@ export default function MathPage() {
   // In the wrong-answer hint flow, picking the correct choice just lets the kid
   // move on — it is NOT logged again (one attempt per question).
   function pickChoice(c) {
-    if (!question || c !== question.product) return;
+    if (!question || c !== question.answer) return;
     setTyped(''); setPhase('input'); advance();
   }
 
@@ -72,11 +79,28 @@ export default function MathPage() {
     <div className="p-4 pb-28">
       <header className="pt-4 mb-4">
         <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
-          <Sparkles className="text-violet-500" /> Times Tables
+          <Sparkles className="text-violet-500" /> Math Practice
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-          {poolLeft > 0 ? `${poolLeft} facts left to master this week` : 'All facts mastered this week! 🎉'}
+          {op === 'mul'
+            ? (poolLeft > 0 ? `${poolLeft} facts left to master this week` : 'All facts mastered this week! 🎉')
+            : `${OPS.find(o => o.key === op)?.label} practice — keep earning points!`}
         </p>
+
+        {/* Operation toggle */}
+        <div className="mt-3 flex gap-2">
+          {OPS.map(o => (
+            <button
+              key={o.key}
+              onClick={() => setOp(o.key)}
+              className={`flex-1 flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold transition-colors ${
+                op === o.key ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+            >
+              <span className="text-lg leading-none">{o.symbol}</span> {o.label}
+            </button>
+          ))}
+        </div>
 
         {/* Grade selector — sets the difficulty cap */}
         <div className="mt-3 flex items-center gap-2">
@@ -105,7 +129,7 @@ export default function MathPage() {
             <>
               <div className="text-center">
                 <div className="text-6xl font-extrabold text-slate-800 tracking-tight tabular-nums">
-                  {question.a} × {question.b}
+                  {question.a} {OP_SYMBOL[question.op]} {question.b}
                 </div>
               </div>
 

@@ -45,28 +45,56 @@ export function pickQuestion(retiredKeys = [], lastKey = null, max = MAX_OPERAND
   const flip = fact.a !== fact.b && Math.random() < 0.5;
   const a = flip ? fact.b : fact.a;
   const b = flip ? fact.a : fact.b;
-  return { a, b, key: fact.key, product: a * b };
+  return { a, b, key: fact.key, op: 'mul', product: a * b, answer: a * b };
 }
 
-// Four answer choices (the correct product + 3 plausible near-miss distractors),
-// shuffled. Used for the multiple-choice hint after a wrong typed answer.
-export function answerChoices(a, b) {
-  const correct = a * b;
+const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+
+// Generate an addition/subtraction question within `max` (operands + result capped).
+// Subtraction stays non-negative. Returns the unified question shape with op + answer.
+// Avoids an immediate repeat of `lastKey`.
+export function pickArithmetic(op, max = 20, lastKey = null) {
+  for (let tries = 0; tries < 25; tries++) {
+    let a, b;
+    if (op === 'add') {
+      a = randInt(1, Math.max(1, max - 1));
+      b = randInt(1, Math.max(1, max - a)); // a + b <= max
+    } else { // sub — result a - b >= 0
+      a = randInt(1, max);
+      b = randInt(0, a);
+    }
+    const key = `${op}:${a}:${b}`;
+    if (key === lastKey) continue;
+    return { a, b, key, op, answer: op === 'add' ? a + b : a - b };
+  }
+  // Fallback (extremely unlikely to loop out): accept a repeat.
+  const a = op === 'add' ? randInt(1, Math.max(1, max - 1)) : randInt(1, max);
+  const b = op === 'add' ? randInt(1, Math.max(1, max - a)) : randInt(0, a);
+  return { a, b, key: `${op}:${a}:${b}`, op, answer: op === 'add' ? a + b : a - b };
+}
+
+// Four shuffled answer choices: the correct value + 3 plausible near-miss distractors.
+// Works for any operation (operands a,b inform the nudges).
+export function choicesForAnswer(correct, a = 1, b = 1) {
   const candidates = new Set([correct]);
-  const nudges = [correct + a, correct - a, correct + b, correct - b, correct + 1, correct - 1, correct + 10, correct - 10];
+  const nudges = [correct + a, correct - a, correct + b, correct - b, correct + 1, correct - 1, correct + 2, correct - 2, correct + 10];
   for (const n of nudges) {
     if (candidates.size >= 4) break;
-    if (n > 0 && n !== correct) candidates.add(n);
+    if (n >= 0 && n !== correct) candidates.add(n);
   }
-  // Pad with random nearby values if we still need more (tiny products).
-  let pad = correct + 2;
-  while (candidates.size < 4) { if (pad > 0) candidates.add(pad); pad += 1; }
+  let pad = correct + 3;
+  while (candidates.size < 4) { if (pad >= 0) candidates.add(pad); pad += 1; }
   const arr = [...candidates].slice(0, 4);
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
+}
+
+// Multiplication choices (kept for callers/tests); delegates to the generic helper.
+export function answerChoices(a, b) {
+  return choicesForAnswer(a * b, a, b);
 }
 
 export const TOTAL_FACTS = ALL_FACTS.length; // 190
