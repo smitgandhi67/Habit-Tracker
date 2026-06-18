@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Minus, Plus, RotateCcw, Save, Check, X, Star } from 'lucide-react';
+import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 import { GRADES } from '../lib/mathGrades';
@@ -173,17 +173,37 @@ export default function MathAdmin() {
     }
   }
 
+  function addReward() {
+    setRewards(rs => [...rs, { key: '', label: '', costPoints: '', unit: 'event' }]);
+  }
+
+  function removeReward(idx) {
+    setRewards(rs => rs.filter((_, j) => j !== idx));
+  }
+
   async function saveConfig() {
+    // Validate client-side so the parent gets an inline message instead of a 400.
+    const clean = [];
+    for (const r of rewards) {
+      const label = (r.label || '').trim();
+      const costPoints = Number(r.costPoints);
+      if (!label) { toast.error('Each reward needs a label'); return; }
+      if (!Number.isInteger(costPoints) || costPoints < 1) {
+        toast.error(`Cost for "${label}" must be a whole number ≥ 1`); return;
+      }
+      // New rows send no key; the server generates a unique slug from the label.
+      clean.push({ ...(r.key ? { key: r.key } : {}), label, costPoints, unit: r.unit === 'minute' ? 'minute' : 'event' });
+    }
+    if (clean.length === 0) { toast.error('Add at least one reward'); return; }
     setBusy(true);
     try {
-      const clean = rewards.map(r => ({ ...r, costPoints: Number(r.costPoints) }));
       const d = await apiFetch('/api/math/admin/config', {
         method: 'PUT',
         body: JSON.stringify({ rewards: clean }),
       });
       setRewards(d.rewards || []);
       await loadUsers();
-      toast.success('Reward costs saved');
+      toast.success('Rewards saved');
     } catch (err) {
       toast.error(String(err.message || 'Failed').slice(0, 120));
     } finally {
@@ -405,30 +425,62 @@ export default function MathAdmin() {
         </div>
       )}
 
-      {/* Reward config */}
+      {/* Reward config — add/edit/remove rewards and their point cost */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-        <h3 className="font-bold text-slate-700 mb-3">Reward costs (points)</h3>
+        <h3 className="font-bold text-slate-700 mb-1">Rewards</h3>
+        <p className="text-xs text-slate-400 mb-3">
+          Points a kid spends to redeem. “minute” rewards can be redeemed in quantities; “event” is one-shot.
+        </p>
         <div className="space-y-2 mb-3">
           {rewards.map((r, i) => (
-            <div key={r.key} className="flex items-center gap-3">
-              <span className="flex-1 text-sm font-medium text-slate-600">
-                {r.label} <span className="text-slate-400">({r.unit})</span>
-              </span>
+            <div key={i} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={r.label}
+                placeholder="Reward name"
+                onChange={e => setRewards(rs => rs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                className="flex-1 min-w-0 rounded-xl border-2 border-slate-200 focus:border-violet-400 outline-none px-3 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setRewards(rs => rs.map((x, j) => (j === i ? { ...x, unit: x.unit === 'minute' ? 'event' : 'minute' } : x)))}
+                className="text-xs font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg px-2 py-1.5 w-16 shrink-0"
+              >
+                {r.unit === 'minute' ? 'minute' : 'event'}
+              </button>
               <input
                 type="number"
+                min="1"
                 value={r.costPoints}
+                placeholder="pts"
                 onChange={e => setRewards(rs => rs.map((x, j) => (j === i ? { ...x, costPoints: e.target.value } : x)))}
-                className="w-28 rounded-xl border-2 border-slate-200 focus:border-violet-400 outline-none px-3 py-1.5 tabular-nums text-right"
+                className="w-20 shrink-0 rounded-xl border-2 border-slate-200 focus:border-violet-400 outline-none px-2 py-1.5 tabular-nums text-right text-sm"
               />
+              <button
+                type="button"
+                onClick={() => removeReward(i)}
+                className="flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg p-1.5 shrink-0"
+                aria-label={`Remove ${r.label || 'reward'}`}
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           ))}
+          {rewards.length === 0 && <p className="text-sm text-slate-400">No rewards yet — add one below.</p>}
         </div>
+        <button
+          type="button"
+          onClick={addReward}
+          className="flex items-center justify-center gap-1 w-full border-2 border-dashed border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600 font-semibold rounded-xl py-2 mb-3 transition-colors"
+        >
+          <Plus size={16} /> Add reward
+        </button>
         <button
           disabled={busy}
           onClick={saveConfig}
           className="flex items-center justify-center gap-1 w-full bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl py-2.5 disabled:opacity-50"
         >
-          <Save size={16} /> Save costs
+          <Save size={16} /> Save rewards
         </button>
       </div>
     </div>
