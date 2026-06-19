@@ -45,6 +45,7 @@ export default function MathPage() {
     const id = setTimeout(() => {
       submitAnswer(-1, true); // sentinel: never equals a product → logged as incorrect
       setPhase('wrong');
+      inputRef.current?.blur(); // surface the choice buttons
     }, ms);
     return () => clearTimeout(id);
   }, [phase, question, stopped, user, submitAnswer]);
@@ -64,10 +65,13 @@ export default function MathPage() {
     const res = submitAnswer(typed, true); // graded locally — instant, no network wait
     setPhase(res.correct ? 'right' : 'wrong');
     if (res.correct) {
-      // Refocus synchronously inside this submit gesture so iOS keeps the numpad open
-      // through the 500ms "Correct!" pause and into the next question (no re-tap needed).
+      // Refocus synchronously inside this submit gesture so the numpad stays open
+      // through the 500ms "Correct!" pause and into the next question (no re-tap).
       inputRef.current?.focus();
       setTimeout(() => { setTyped(''); setPhase('input'); advance(); inputRef.current?.focus(); }, 500);
+    } else {
+      // Wrong: drop the keyboard so the multiple-choice buttons are visible.
+      inputRef.current?.blur();
     }
   }
 
@@ -76,6 +80,8 @@ export default function MathPage() {
   function pickChoice(c) {
     if (!question || c !== question.answer) return;
     setTyped(''); setPhase('input'); advance();
+    // Refocus inside this tap gesture so the keypad reopens for the next question.
+    inputRef.current?.focus();
   }
 
   return (
@@ -125,40 +131,44 @@ export default function MathPage() {
                 </div>
               </div>
 
-              {phase !== 'wrong' && (
-                <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3">
-                  <input
-                    ref={inputRef}
-                    type="number"
-                    inputMode="numeric"
-                    value={typed}
-                    // readOnly (not disabled) on the brief "right" state: disabling blurs
-                    // the field, which drops the iOS numpad. readOnly keeps focus so the
-                    // keyboard stays up into the next question.
-                    readOnly={phase === 'right'}
-                    onChange={e => setTyped(e.target.value)}
-                    placeholder="?"
-                    className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
-                      phase === 'right' ? 'border-green-400 bg-green-50 text-green-600' : 'border-slate-200 focus:border-violet-400'
-                    }`}
-                  />
-                  {phase === 'right' ? (
-                    <div className="flex items-center gap-1 text-green-600 font-bold text-lg">
-                      <Check /> Correct! +1 point
-                    </div>
-                  ) : (
-                    <button
-                      type="submit"
-                      className="bg-violet-600 hover:bg-violet-700 text-white font-bold text-lg rounded-2xl px-8 py-3 transition-colors"
-                    >
-                      Check
-                    </button>
-                  )}
-                </form>
-              )}
+              {/* The input stays mounted in every phase. We never `disabled` it (that
+                  blurs and drops the mobile keyboard) — readOnly instead — so it can be
+                  refocused inside a submit/tap gesture, which is what reopens the numeric
+                  keypad on iOS + Android when moving to the next question. */}
+              <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3">
+                <input
+                  ref={inputRef}
+                  type="number"
+                  inputMode="numeric"
+                  value={typed}
+                  readOnly={phase !== 'input'}
+                  onChange={e => setTyped(e.target.value)}
+                  placeholder="?"
+                  className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
+                    phase === 'right'
+                      ? 'border-green-400 bg-green-50 text-green-600'
+                      : phase === 'wrong'
+                        ? 'border-red-300 bg-red-50 text-red-500'
+                        : 'border-slate-200 focus:border-violet-400'
+                  }`}
+                />
+                {phase === 'input' && (
+                  <button
+                    type="submit"
+                    className="bg-violet-600 hover:bg-violet-700 text-white font-bold text-lg rounded-2xl px-8 py-3 transition-colors"
+                  >
+                    Check
+                  </button>
+                )}
+                {phase === 'right' && (
+                  <div className="flex items-center gap-1 text-green-600 font-bold text-lg">
+                    <Check /> Correct! +1 point
+                  </div>
+                )}
+              </form>
 
               {phase === 'wrong' && (
-                <div className="mt-6">
+                <div className="mt-4">
                   <div className="flex items-center justify-center gap-1 text-red-500 font-semibold mb-3">
                     <X size={18} /> Not quite — tap the right answer
                   </div>
@@ -166,6 +176,7 @@ export default function MathPage() {
                     {choices.map(c => (
                       <button
                         key={c}
+                        type="button"
                         onClick={() => pickChoice(c)}
                         className="text-2xl font-bold tabular-nums rounded-2xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50 py-4 transition-colors"
                       >
