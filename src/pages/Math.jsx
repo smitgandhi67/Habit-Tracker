@@ -64,7 +64,10 @@ export default function MathPage() {
     const res = submitAnswer(typed, true); // graded locally — instant, no network wait
     setPhase(res.correct ? 'right' : 'wrong');
     if (res.correct) {
-      setTimeout(() => { setTyped(''); setPhase('input'); advance(); }, 500);
+      // Refocus synchronously inside this submit gesture so iOS keeps the numpad open
+      // through the 500ms "Correct!" pause and into the next question (no re-tap needed).
+      inputRef.current?.focus();
+      setTimeout(() => { setTyped(''); setPhase('input'); advance(); inputRef.current?.focus(); }, 500);
     }
   }
 
@@ -129,7 +132,10 @@ export default function MathPage() {
                     type="number"
                     inputMode="numeric"
                     value={typed}
-                    disabled={phase === 'right'}
+                    // readOnly (not disabled) on the brief "right" state: disabling blurs
+                    // the field, which drops the iOS numpad. readOnly keeps focus so the
+                    // keyboard stays up into the next question.
+                    readOnly={phase === 'right'}
                     onChange={e => setTyped(e.target.value)}
                     placeholder="?"
                     className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
