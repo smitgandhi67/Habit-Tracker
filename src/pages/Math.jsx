@@ -131,17 +131,19 @@ export default function MathPage() {
                 </div>
               </div>
 
-              {/* The input stays mounted in every phase. We never `disabled` it (that
-                  blurs and drops the mobile keyboard) — readOnly instead — so it can be
-                  refocused inside a submit/tap gesture, which is what reopens the numeric
-                  keypad on iOS + Android when moving to the next question. */}
+              {/* The input stays mounted in every phase and is never `disabled` (that
+                  blurs and drops the mobile keyboard). It is only `readOnly` in the wrong
+                  phase (where we blur to show the choices). On the correct path it stays
+                  editable+focused: iOS Safari hides the keypad the instant a focused field
+                  turns readOnly, so keeping it editable is what holds the numpad open on
+                  iPad through the pause and into the next question. */}
               <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3">
                 <input
                   ref={inputRef}
                   type="number"
                   inputMode="numeric"
                   value={typed}
-                  readOnly={phase !== 'input'}
+                  readOnly={phase === 'wrong'}
                   onChange={e => setTyped(e.target.value)}
                   placeholder="?"
                   className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
