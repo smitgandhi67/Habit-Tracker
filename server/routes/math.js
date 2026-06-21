@@ -510,6 +510,8 @@ router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, ne
 
     if (award.points > 0) {
       try {
+        const habit = await Habit.findById(award.habitId).select('name').lean();
+        const habitName = habit?.name || 'Unknown habit';
         await MathReward.findOneAndUpdate(
           { userId: award.userId },
           { $inc: { pointsEarned: award.points } },
@@ -517,7 +519,7 @@ router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, ne
         );
         await MathPointAdjustment.create({
           userId: award.userId, adminEmail: req.user.email, type: 'add',
-          amount: award.points, reason: `Habit award ${award.date}`,
+          amount: award.points, reason: `Habit award: ${habitName} (${award.date})`,
         });
       } catch (creditErr) {
         // Revert the flip so the award isn't left approved-but-uncredited; safe to retry.
@@ -582,6 +584,10 @@ router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, 
     }
     if (perUser.size > 0) {
       try {
+        const credited = claimed.filter(a => a.points > 0);
+        const habitIds = [...new Set(credited.map(a => String(a.habitId)))];
+        const habits = await Habit.find({ _id: { $in: habitIds } }).select('name').lean();
+        const nameById = new Map(habits.map(h => [String(h._id), h.name]));
         await MathReward.bulkWrite([...perUser].map(([userId, pts]) => ({
           updateOne: {
             filter: { userId },
@@ -590,9 +596,10 @@ router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, 
           },
         })));
         await MathPointAdjustment.insertMany(
-          claimed.filter(a => a.points > 0).map(a => ({
+          credited.map(a => ({
             userId: a.userId, adminEmail: req.user.email, type: 'add',
-            amount: a.points, reason: `Habit award ${a.date}`,
+            amount: a.points,
+            reason: `Habit award: ${nameById.get(String(a.habitId)) || 'Unknown habit'} (${a.date})`,
           }))
         );
       } catch (creditErr) {
