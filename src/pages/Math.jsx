@@ -82,10 +82,15 @@ export default function MathPage() {
   // Auto-submit as soon as the typed number matches the correct answer — the kid
   // never has to tap "Check" when right. A wrong number still waits for Check so
   // partial entries (e.g. "1" on the way to "12") don't submit prematurely.
-  useEffect(() => {
-    if (phase !== 'input' || typed === '' || !question) return;
-    if (Number(typed) === question.answer) grade(typed);
-  }, [typed, phase, question]);
+  // Graded synchronously inside the keystroke gesture (NOT a useEffect): iOS only
+  // lets focus() reopen the soft keyboard from within a user gesture, so handling
+  // it here keeps the numpad open through the pause into the next question.
+  function handleType(value) {
+    setTyped(value);
+    if (phase === 'input' && value !== '' && question && Number(value) === question.answer) {
+      grade(value);
+    }
+  }
 
   // In the wrong-answer hint flow, picking the correct choice just lets the kid
   // move on — it is NOT logged again (one attempt per question).
@@ -156,7 +161,7 @@ export default function MathPage() {
                   inputMode="numeric"
                   value={typed}
                   readOnly={phase === 'wrong'}
-                  onChange={e => setTyped(e.target.value)}
+                  onChange={e => handleType(e.target.value)}
                   placeholder="?"
                   className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
                     phase === 'right'
