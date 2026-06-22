@@ -39,6 +39,12 @@ function isoWeekKey(dateStr) {
   return `${isoYear}-W${String(week).padStart(2, '0')}`;
 }
 
+// Points earned per first-try-correct answer, by operation. Subtraction is worth
+// more to reward the harder skill. Keep in sync with src/lib/mathRewards.js.
+function pointsForOp(op) {
+  return op === 'sub' ? 3 : 1;
+}
+
 // Current spendable balance — never negative.
 function balanceOf(reward) {
   const earned = reward?.pointsEarned || 0;
@@ -54,4 +60,5 @@ module.exports = {
   isValidOperand,
   isoWeekKey,
   balanceOf,
+  pointsForOp,
 };

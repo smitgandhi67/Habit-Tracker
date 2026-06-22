@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { pickQuestion, pickArithmetic, factCountForMax } from '../lib/mathFacts';
 import { mulMaxForGrade, addSubMaxForGrade } from '../lib/mathGrades';
+import { pointsForOp } from '../lib/mathRewards';
 
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
 
@@ -135,6 +136,7 @@ export function useMath() {
     const answer = Number(value);
     const correct = answer === question.answer;
     const earns = correct && firstTry === true;
+    const pts = earns ? pointsForOp(question.op) : 0; // weighted (sub = 3, else = 1)
 
     buffer.current.push({ a: question.a, b: question.b, answer, firstTry: !!firstTry, date: today, op: question.op });
     writeLS(bufferKey(uid), buffer.current);
@@ -142,11 +144,11 @@ export function useMath() {
     setSession(s => ({
       attempted: s.attempted + 1,
       correct: s.correct + (earns ? 1 : 0),
-      points: s.points + (earns ? 1 : 0),
+      points: s.points + pts,
     }));
     setTodayCounts(t => ({ attempted: t.attempted + 1, correct: t.correct + (earns ? 1 : 0) }));
     if (earns) {
-      setReward(r => ({ ...r, pointsEarned: r.pointsEarned + 1, balance: r.balance + 1 }));
+      setReward(r => ({ ...r, pointsEarned: r.pointsEarned + pts, balance: r.balance + pts }));
     }
 
     if (buffer.current.length >= FLUSH_AT) flush();

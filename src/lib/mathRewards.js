@@ -6,6 +6,12 @@ export const DEFAULT_REWARDS = [
   { key: 'sleepover', label: 'Sleepover', costPoints: 2660, unit: 'event'  },
 ];
 
+// Points earned per first-try-correct answer, by operation. Subtraction is worth
+// more to reward the harder skill. Keep in sync with server/utils/math.js.
+export function pointsForOp(op) {
+  return op === 'sub' ? 3 : 1;
+}
+
 // How many units of a reward the balance can currently buy.
 export function affordableQty(balance, reward) {
   if (!reward || reward.costPoints <= 0) return 0;

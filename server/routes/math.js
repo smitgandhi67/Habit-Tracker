@@ -17,6 +17,7 @@ const {
   isValidOperand,
   isoWeekKey,
   balanceOf,
+  pointsForOp,
 } = require('../utils/math');
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -120,22 +121,23 @@ router.post('/answer', async (req, res, next) => {
     const userId = req.user._id;
     const correct = isCorrectAnswer(op, a, b, answer);
     const earns = correct && firstTry === true; // only first-try-correct earns points (+ mastery for mul)
+    const pts = earns ? pointsForOp(op) : 0;    // weighted by operation (sub = 3, else = 1)
     const weekKey = isoWeekKey(date);
 
-    // Daily counters: always attempted++, correct++ when it earns.
+    // Daily counters: always attempted++, correct++ when it earns, points by weight.
     await MathDailyStat.findOneAndUpdate(
       { userId, date },
-      { $inc: { attempted: 1, correct: earns ? 1 : 0 } },
+      { $inc: { attempted: 1, correct: earns ? 1 : 0, points: pts } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
     let summary;
     let retired = false;
     if (earns) {
-      // +1 point for every first-try-correct (no dedup, no daily cap), any operation.
+      // Points for every first-try-correct (no dedup, no daily cap); subtraction is worth 3.
       const reward = await MathReward.findOneAndUpdate(
         { userId },
-        { $inc: { pointsEarned: 1 } },
+        { $inc: { pointsEarned: pts } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       summary = rewardSummary(reward);
@@ -195,21 +197,22 @@ router.post('/answer/batch', async (req, res, next) => {
     let pointsInc = 0;
     for (const [date, items] of byDate) {
       const weekKey = isoWeekKey(date);
-      let attempted = 0, correct = 0;
+      let attempted = 0, correct = 0, points = 0;
       const earnedFacts = new Set(); // distinct multiplication facts earned → 1 mastery step each
       for (const it of items) {
         const op = it.op || 'mul';
         attempted += 1;
         if (isCorrectAnswer(op, it.a, it.b, it.answer) && it.firstTry === true) {
           correct += 1;
+          points += pointsForOp(op); // weighted (sub = 3, else = 1)
           if (op === 'mul') earnedFacts.add(canonicalKey(it.a, it.b));
         }
       }
-      pointsInc += correct;
+      pointsInc += points;
 
       await MathDailyStat.findOneAndUpdate(
         { userId, date },
-        { $inc: { attempted, correct } },
+        { $inc: { attempted, correct, points } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
 
@@ -661,13 +664,14 @@ async function buildLedger(userId, cursorIso, limit) {
   }));
 
   const earnEvents = stats
-    .map(s => ({ ts: new Date(`${s.date}T12:00:00Z`), localDate: s.date, correct: s.correct, attempted: s.attempted }))
+    // points is the weighted earnings; legacy rows (pre-weighting) fall back to correct (1:1).
+    .map(s => ({ ts: new Date(`${s.date}T12:00:00Z`), localDate: s.date, correct: s.correct, attempted: s.attempted, points: s.points ?? s.correct }))
     .filter(e => e.ts < upper)
     .slice(0, limit)
     .map(e => ({
       ts: e.ts, localDate: e.localDate, kind: 'earn',
-      delta: e.correct, label: 'Math practice',
-      meta: { correct: e.correct, attempted: e.attempted },
+      delta: e.points, label: 'Math practice',
+      meta: { correct: e.correct, attempted: e.attempted, points: e.points },
     }));
 
   const merged = [...adjEvents, ...declineEvents, ...earnEvents].sort((a, b) => b.ts - a.ts);

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Check, X, Tv, Tent, Trophy, Sparkles, History } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
 import { choicesForAnswer } from '../lib/mathFacts';
-import { affordableQty } from '../lib/mathRewards';
+import { affordableQty, pointsForOp } from '../lib/mathRewards';
 import { timerSecondsFor } from '../lib/mathTimer';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -164,7 +164,7 @@ export default function MathPage() {
                 )}
                 {phase === 'right' && (
                   <div className="flex items-center gap-1 text-green-600 font-bold text-lg">
-                    <Check /> Correct! +1 point
+                    <Check /> Correct! +{pointsForOp(question.op)} {pointsForOp(question.op) === 1 ? 'point' : 'points'}
                   </div>
                 )}
               </form>
