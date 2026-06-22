@@ -59,10 +59,9 @@ export default function MathPage() {
   const tvMinutes = tv ? affordableQty(reward.balance, tv) : 0;
   const poolLeft = totalFacts - retiredCount;
 
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (phase !== 'input' || typed === '' || !question) return;
-    const res = submitAnswer(typed, true); // graded locally — instant, no network wait
+  function grade(value) {
+    if (phase !== 'input' || value === '' || !question) return;
+    const res = submitAnswer(value, true); // graded locally — instant, no network wait
     setPhase(res.correct ? 'right' : 'wrong');
     if (res.correct) {
       // Refocus synchronously inside this submit gesture so the numpad stays open
@@ -74,6 +73,19 @@ export default function MathPage() {
       inputRef.current?.blur();
     }
   }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    grade(typed);
+  }
+
+  // Auto-submit as soon as the typed number matches the correct answer — the kid
+  // never has to tap "Check" when right. A wrong number still waits for Check so
+  // partial entries (e.g. "1" on the way to "12") don't submit prematurely.
+  useEffect(() => {
+    if (phase !== 'input' || typed === '' || !question) return;
+    if (Number(typed) === question.answer) grade(typed);
+  }, [typed, phase, question]);
 
   // In the wrong-answer hint flow, picking the correct choice just lets the kid
   // move on — it is NOT logged again (one attempt per question).
