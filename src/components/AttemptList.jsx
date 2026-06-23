@@ -3,8 +3,12 @@ import { ChevronRight } from 'lucide-react';
 import { styleInfo } from '../lib/parenting/bands';
 
 function formatDate(iso) {
-  try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
-  catch { return ''; }
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+  } catch { return ''; }
 }
 
 // Cursor-driven list of past attempts (patterned on PointsLedger). Each row links
