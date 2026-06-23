@@ -4,9 +4,11 @@ const mongoose = require('mongoose');
 
 const ParentingConfig = require('../models/ParentingConfig');
 const ParentingAttempt = require('../models/ParentingAttempt');
+const ParentingLink = require('../models/ParentingLink');
+const User = require('../models/User');
 const { listInstruments, getInstrument, activeDefaults } = require('../parenting/instruments');
 const { scoreInstrument } = require('../parenting/scoring');
-const { isAdmin } = require('../utils/auth');
+const { isAdmin, requireAdmin, ADMIN_EMAIL } = require('../utils/auth');
 
 // ---- config singleton -----------------------------------------------------
 
@@ -119,13 +121,19 @@ router.post('/attempts', async (req, res, next) => {
     if (!inst) return res.status(404).json({ error: 'Unknown instrument' });
 
     // Determine subject. Self-report instruments always describe the taker.
-    // Child's-view instruments (Phase 3) name the parent being rated.
+    // Child's-view instruments name the parent being rated; if the child doesn't
+    // specify one, default to the family parent (the admin user).
     let subject = req.user._id;
     if (inst.audience === 'child') {
-      if (subjectUserId && !mongoose.Types.ObjectId.isValid(subjectUserId)) {
-        return res.status(400).json({ error: 'Invalid subjectUserId' });
+      if (subjectUserId) {
+        if (!mongoose.Types.ObjectId.isValid(subjectUserId)) {
+          return res.status(400).json({ error: 'Invalid subjectUserId' });
+        }
+        subject = subjectUserId;
+      } else {
+        const parent = await User.findOne({ email: ADMIN_EMAIL }).select('_id').lean();
+        if (parent) subject = parent._id;
       }
-      if (subjectUserId) subject = subjectUserId;
     }
 
     let scored;
@@ -220,6 +228,69 @@ router.get('/attempts/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ---- admin: users + family links ------------------------------------------
+
+// GET /api/parenting/admin/users — all users (for the parent console picker).
+router.get('/admin/users', requireAdmin, async (_req, res, next) => {
+  try {
+    const users = await User.find().select('name email').lean();
+    res.json(users
+      .map(u => ({ _id: u._id, name: u.name, email: u.email, isAdmin: u.email === ADMIN_EMAIL }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+  } catch (err) { next(err); }
+});
+
+// GET /api/parenting/admin/links — this parent's child links.
+router.get('/admin/links', requireAdmin, async (req, res, next) => {
+  try {
+    const links = await ParentingLink.find({ parentUserId: req.user._id }).lean();
+    const childIds = links.map(l => l.childUserId);
+    const children = await User.find({ _id: { $in: childIds } }).select('name email').lean();
+    const byId = new Map(children.map(c => [String(c._id), c]));
+    res.json(links.map(l => ({
+      _id: l._id,
+      childUserId: l.childUserId,
+      label: l.label,
+      childName: byId.get(String(l.childUserId))?.name || null,
+      childEmail: byId.get(String(l.childUserId))?.email || null,
+    })));
+  } catch (err) { next(err); }
+});
+
+// POST /api/parenting/admin/links — link a child to this parent. Body: { childUserId, label? }.
+router.post('/admin/links', requireAdmin, async (req, res, next) => {
+  try {
+    const { childUserId, label } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(childUserId)) {
+      return res.status(400).json({ error: 'valid childUserId required' });
+    }
+    if (String(childUserId) === String(req.user._id)) {
+      return res.status(400).json({ error: 'Cannot link yourself as a child' });
+    }
+    const child = await User.findById(childUserId).select('_id').lean();
+    if (!child) return res.status(404).json({ error: 'Child user not found' });
+    try {
+      const link = await ParentingLink.create({ parentUserId: req.user._id, childUserId, label });
+      res.status(201).json({ _id: link._id, childUserId: link.childUserId, label: link.label });
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ error: 'Link already exists' });
+      throw err;
+    }
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/parenting/admin/links/:id — remove a link this parent owns.
+router.delete('/admin/links/:id', requireAdmin, async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const link = await ParentingLink.findOneAndDelete({ _id: req.params.id, parentUserId: req.user._id });
+    if (!link) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

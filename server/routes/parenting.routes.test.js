@@ -39,9 +39,34 @@ ParentingAttempt.find = filter => {
   return q;
 };
 
+// Stub User + ParentingLink for the admin/child endpoints.
+const User = require('../models/User');
+const ParentingLink = require('../models/ParentingLink');
+const adminUserId = new mongoose.Types.ObjectId().toString();
+const leanOf = val => ({ select: () => ({ lean: async () => val }), lean: async () => val });
+User.findOne = () => leanOf({ _id: adminUserId });          // admin lookup (child subject default)
+User.findById = id => leanOf({ _id: String(id) });           // link target exists
+User.find = () => leanOf([{ _id: adminUserId, name: 'Admin', email: 'admin.e2e@example.com' }]);
+const linkStore = new Map();
+ParentingLink.find = q => ({ lean: async () => [...linkStore.values()].filter(l => String(l.parentUserId) === String(q.parentUserId)) });
+ParentingLink.create = async doc => {
+  if ([...linkStore.values()].some(l => String(l.parentUserId) === String(doc.parentUserId) && String(l.childUserId) === String(doc.childUserId))) {
+    const e = new Error('dup'); e.code = 11000; throw e;
+  }
+  const _id = new mongoose.Types.ObjectId().toString();
+  const saved = { ...doc, _id }; linkStore.set(_id, saved); return saved;
+};
+ParentingLink.findOneAndDelete = async q => {
+  for (const [k, l] of linkStore) {
+    if (String(l._id) === String(q._id) && String(l.parentUserId) === String(q.parentUserId)) { linkStore.delete(k); return l; }
+  }
+  return null;
+};
+
 const requireAuth = require('../middleware/auth');
 const router = require('./parenting');
 const style = require('../parenting/instruments/style');
+const childView = require('../parenting/instruments/child_view');
 
 let server, base;
 before(async () => {
@@ -160,4 +185,44 @@ test('GET /attempts returns caller history with cursor pagination', async () => 
 test('GET /attempts rejects an invalid cursor with 400', async () => {
   const res = await fetch(`${base}/api/parenting/attempts?cursor=notadate`, { headers: { Cookie: ckA } });
   assert.equal(res.status, 400);
+});
+
+test('POST child_view without subjectUserId defaults subject to the parent (admin)', async () => {
+  const responses = childView.items.map(it => ({ itemId: it.id, value: 3 }));
+  const res = await fetch(`${base}/api/parenting/attempts`, {
+    method: 'POST', headers: { Cookie: ckB, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'child_view', responses }),
+  });
+  const result = await res.json();
+  assert.equal(res.status, 201);
+  assert.equal(String(result.subjectUserId), adminUserId); // rated parent, not the child
+});
+
+test('admin links: non-admin forbidden, admin can create/list/delete, duplicate 409', async () => {
+  const childId = new mongoose.Types.ObjectId().toString();
+  // non-admin blocked
+  const forbidden = await fetch(`${base}/api/parenting/admin/links`, {
+    method: 'POST', headers: { Cookie: ckA, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ childUserId: childId }),
+  });
+  assert.equal(forbidden.status, 403);
+  // admin creates
+  const created = await fetch(`${base}/api/parenting/admin/links`, {
+    method: 'POST', headers: { Cookie: ckAdmin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ childUserId: childId, label: 'Kid' }),
+  });
+  assert.equal(created.status, 201);
+  const link = await created.json();
+  // duplicate -> 409
+  const dup = await fetch(`${base}/api/parenting/admin/links`, {
+    method: 'POST', headers: { Cookie: ckAdmin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ childUserId: childId }),
+  });
+  assert.equal(dup.status, 409);
+  // list shows it
+  const list = await (await fetch(`${base}/api/parenting/admin/links`, { headers: { Cookie: ckAdmin } })).json();
+  assert.ok(list.some(l => String(l._id) === String(link._id)));
+  // delete
+  const del = await fetch(`${base}/api/parenting/admin/links/${link._id}`, { method: 'DELETE', headers: { Cookie: ckAdmin } });
+  assert.equal(del.status, 200);
 });

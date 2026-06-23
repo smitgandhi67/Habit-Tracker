@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { scoreInstrument } = require('./scoring');
 const style = require('./instruments/style');
 const scale = require('./instruments/scale');
+const childView = require('./instruments/child_view');
 
 // Build a full response set by assigning each item a value based on its facet.
 function responsesByFacet(inst, facetValues, fallback) {
@@ -97,4 +98,43 @@ test('scale: consistency dimension is high for ideal, low for worst (gap-compati
   const c = r => r.dimensions.find(d => d.key === 'consistency').score;
   assert.equal(c(ideal), 1); // laxness 1 -> inverted 7 -> normalized 1
   assert.equal(c(worst), 0); // laxness 7 -> inverted 1 -> normalized 0
+});
+
+// --- Child's-View ------------------------------------------------------------
+const childAll = v => childView.items.map(it => ({ itemId: it.id, value: v }));
+
+test('child_view: shape — 14 items, 3-point scale, no corporal-punishment items', () => {
+  assert.equal(childView.items.length, 14);
+  assert.deepEqual(childView.responseScale, { min: 1, max: 3 });
+  const text = childView.items.map(i => i.text.toLowerCase()).join(' ');
+  for (const banned of ['hit', 'spank', 'slap', 'hits you', 'beat']) {
+    assert.ok(!text.includes(banned), `child item should not mention "${banned}"`);
+  }
+});
+
+test('child_view: warm + consistent answers => high warmth & consistency', () => {
+  // Warmth items high (3), inconsistency items low (1) => warm + consistent.
+  const responses = childView.items.map(it => ({
+    itemId: it.id,
+    value: it.subscale === 'inconsistent' ? 1 : 3,
+  }));
+  const res = scoreInstrument(childView, responses);
+  const warmth = res.dimensions.find(d => d.key === 'warmth').score;
+  const consistency = res.dimensions.find(d => d.key === 'consistency').score;
+  assert.equal(warmth, 1);       // involvement+positive mean 3 -> normalized 1
+  assert.equal(consistency, 1);  // inconsistent mean 1 -> inverted 3 -> normalized 1
+});
+
+test('child_view: gap dimension keys match the parent instruments', () => {
+  const childDims = new Set(childView.dimensions.map(d => d.key));
+  const styleDims = new Set(style.dimensions.map(d => d.key));
+  for (const k of ['warmth', 'consistency']) {
+    assert.ok(childDims.has(k) && styleDims.has(k), `shared dimension ${k} missing`);
+  }
+});
+
+test('child_view: interpretation has no clinical styleKey and is gentle', () => {
+  const res = scoreInstrument(childView, childAll(2));
+  assert.equal(res.interpretation.styleKey, undefined);
+  assert.match(res.interpretation.kidSummary, /thanks/i);
 });

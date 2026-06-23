@@ -10,7 +10,7 @@
 const REGISTRY = {
   style:         require('./style'),       // Phase 1
   scale:         require('./scale'),       // Phase 2
-  // child_view: require('./child_view'),  // Phase 3
+  child_view:    require('./child_view'),  // Phase 3
 };
 
 // All instrument configs (latest version of each key).
