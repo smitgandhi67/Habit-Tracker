@@ -82,6 +82,15 @@ export default function Layout({ children }) {
                   <ShieldCheck size={15} /> Parent console
                 </NavLink>
               )}
+              {user?.isAdmin && (
+                <NavLink
+                  to="/parenting/admin"
+                  onClick={() => setShowMenu(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <HeartHandshake size={15} /> Parenting console
+                </NavLink>
+              )}
               <button
                 onClick={() => { setShowMenu(false); logout(); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-colors"

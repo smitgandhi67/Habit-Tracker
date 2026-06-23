@@ -17,7 +17,8 @@ const mongoose = require('mongoose');
 const ParentingAttempt = require('../models/ParentingAttempt');
 const ParentingConfig = require('../models/ParentingConfig');
 const store = new Map();
-ParentingConfig.findOne = async () => ({ active: [] });
+const cfgDoc = { active: [], save: async () => {} };
+ParentingConfig.findOne = async () => cfgDoc;
 ParentingConfig.create = async d => d;
 ParentingAttempt.create = async doc => {
   const _id = new mongoose.Types.ObjectId().toString();
@@ -26,15 +27,28 @@ ParentingAttempt.create = async doc => {
   return saved;
 };
 ParentingAttempt.findById = async id => store.get(String(id)) || null;
-ParentingAttempt.find = filter => {
-  let arr = [...store.values()].filter(d => String(d.userId) === String(filter.userId));
+function matchAttempts(filter) {
+  let arr = [...store.values()];
+  if (filter.userId) arr = arr.filter(d => String(d.userId) === String(filter.userId));
+  if (filter.subjectUserId) arr = arr.filter(d => String(d.subjectUserId) === String(filter.subjectUserId));
   if (filter.instrumentKey) arr = arr.filter(d => d.instrumentKey === filter.instrumentKey);
   if (filter.completedAt?.$lt) arr = arr.filter(d => d.completedAt < filter.completedAt.$lt);
+  return arr;
+}
+ParentingAttempt.find = filter => {
   const q = {
-    _arr: arr,
+    _arr: matchAttempts(filter),
     sort() { this._arr.sort((a, b) => b.completedAt - a.completedAt); return this; },
     limit(n) { this._n = n; return this; },
     lean() { return Promise.resolve(this._n ? this._arr.slice(0, this._n) : this._arr); },
+  };
+  return q;
+};
+ParentingAttempt.findOne = filter => {
+  const q = {
+    _arr: matchAttempts(filter),
+    sort() { this._arr.sort((a, b) => b.completedAt - a.completedAt); return this; },
+    lean() { return Promise.resolve(this._arr[0] || null); },
   };
   return q;
 };
@@ -55,6 +69,12 @@ ParentingLink.create = async doc => {
   }
   const _id = new mongoose.Types.ObjectId().toString();
   const saved = { ...doc, _id }; linkStore.set(_id, saved); return saved;
+};
+ParentingLink.findOne = async q => {
+  for (const l of linkStore.values()) {
+    if (String(l.parentUserId) === String(q.parentUserId) && String(l.childUserId) === String(q.childUserId)) return l;
+  }
+  return null;
 };
 ParentingLink.findOneAndDelete = async q => {
   for (const [k, l] of linkStore) {
@@ -196,6 +216,61 @@ test('POST child_view without subjectUserId defaults subject to the parent (admi
   const result = await res.json();
   assert.equal(res.status, 201);
   assert.equal(String(result.subjectUserId), adminUserId); // rated parent, not the child
+});
+
+test('gap: parent vs linked child shows shared dimensions; unlinked caller 403; admin/gap works', async () => {
+  const parentId = new mongoose.Types.ObjectId().toString();
+  const childId = new mongoose.Types.ObjectId().toString();
+  const pCk = cookie(parentId, 'admin.e2e@example.com'); // family parent is the admin
+  const cCk = cookie(childId, 'kid.gap@example.com');
+
+  // parent self-report (style)
+  await fetch(`${base}/api/parenting/attempts`, {
+    method: 'POST', headers: { Cookie: pCk, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'style', responses: authoritativeResponses() }),
+  });
+  // child rates this parent explicitly
+  const childWarm = childView.items.map(it => ({ itemId: it.id, value: it.subscale === 'inconsistent' ? 1 : 3 }));
+  await fetch(`${base}/api/parenting/attempts`, {
+    method: 'POST', headers: { Cookie: cCk, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'child_view', responses: childWarm, subjectUserId: parentId }),
+  });
+  // link
+  await fetch(`${base}/api/parenting/admin/links`, {
+    method: 'POST', headers: { Cookie: pCk, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ childUserId: childId }),
+  });
+
+  const gapRes = await fetch(`${base}/api/parenting/gap?childUserId=${childId}`, { headers: { Cookie: pCk } });
+  assert.equal(gapRes.status, 200);
+  const gap = await gapRes.json();
+  assert.ok(gap.parent.hasData && gap.child.hasData);
+  const keys = gap.gap.map(g => g.key);
+  assert.ok(keys.includes('warmth') && keys.includes('consistency'));
+  for (const g of gap.gap) assert.ok(['aligned', 'some-gap', 'large-gap'].includes(g.alignment));
+
+  // a different (unlinked) user is blocked
+  const blocked = await fetch(`${base}/api/parenting/gap?childUserId=${childId}`, { headers: { Cookie: ckA } });
+  assert.equal(blocked.status, 403);
+
+  // admin can view any pair
+  const adminGap = await fetch(`${base}/api/parenting/admin/gap?parentUserId=${parentId}&childUserId=${childId}`, { headers: { Cookie: ckAdmin } });
+  assert.equal(adminGap.status, 200);
+});
+
+test('admin config: lists active versions and updates them', async () => {
+  const list = await (await fetch(`${base}/api/parenting/admin/config`, { headers: { Cookie: ckAdmin } })).json();
+  assert.ok(list.some(c => c.instrumentKey === 'style' && c.activeVersion === 1));
+  const ok = await fetch(`${base}/api/parenting/admin/config`, {
+    method: 'PUT', headers: { Cookie: ckAdmin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'style', version: 1 }),
+  });
+  assert.equal(ok.status, 200);
+  const bad = await fetch(`${base}/api/parenting/admin/config`, {
+    method: 'PUT', headers: { Cookie: ckAdmin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'style', version: 99 }),
+  });
+  assert.equal(bad.status, 400);
 });
 
 test('admin links: non-admin forbidden, admin can create/list/delete, duplicate 409', async () => {

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HeartHandshake, ChevronRight, History } from 'lucide-react';
+import { HeartHandshake, ChevronRight, History, Users } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 // Parenting assessment hub. Lists the available research-based questionnaires
 // and routes into each runner. Instruments are added phase by phase; until the
 // first one lands this shows a friendly empty state.
 export default function Parenting() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [instruments, setInstruments] = useState(null); // null = loading
   const [error, setError] = useState(null);
 
@@ -61,6 +63,18 @@ export default function Parenting() {
             </div>
             <ChevronRight className="text-slate-300 shrink-0" size={20} />
           </button>
+          {user?.isAdmin && (
+            <button
+              onClick={() => navigate('/parenting/gap')}
+              className="w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-slate-100 hover:border-violet-200 transition-colors flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-slate-400" />
+                <span className="font-medium text-slate-700">You & your child (gap report)</span>
+              </div>
+              <ChevronRight className="text-slate-300 shrink-0" size={20} />
+            </button>
+          )}
           {instruments.map(inst => (
             <button
               key={inst.key}

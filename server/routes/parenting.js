@@ -7,7 +7,7 @@ const ParentingAttempt = require('../models/ParentingAttempt');
 const ParentingLink = require('../models/ParentingLink');
 const User = require('../models/User');
 const { listInstruments, getInstrument, activeDefaults } = require('../parenting/instruments');
-const { scoreInstrument } = require('../parenting/scoring');
+const { scoreInstrument, gapReport } = require('../parenting/scoring');
 const { isAdmin, requireAdmin, ADMIN_EMAIL } = require('../utils/auth');
 
 // ---- config singleton -----------------------------------------------------
@@ -230,6 +230,54 @@ router.get('/attempts/:id', async (req, res, next) => {
   }
 });
 
+// ---- gap report -----------------------------------------------------------
+
+// Most-recent value per dimension across a parent's self-report attempts
+// (style gives warmth+consistency; scale reinforces consistency). Newest wins.
+async function parentDimensions(parentId) {
+  const attempts = await ParentingAttempt.find({ userId: parentId, subjectUserId: parentId })
+    .sort({ completedAt: -1 }).lean();
+  const dims = {};
+  let latestAt = null;
+  for (const a of attempts) {
+    if (!latestAt) latestAt = a.completedAt;
+    for (const d of a.dimensions || []) if (!(d.key in dims)) dims[d.key] = d.score;
+  }
+  return { dims, hasData: attempts.length > 0, completedAt: latestAt };
+}
+
+// Latest child's-view of a given parent.
+async function childDimensions(childId, parentId) {
+  const a = await ParentingAttempt.findOne({ userId: childId, subjectUserId: parentId, instrumentKey: 'child_view' })
+    .sort({ completedAt: -1 }).lean();
+  if (!a) return { dims: {}, hasData: false, completedAt: null };
+  return { dims: Object.fromEntries((a.dimensions || []).map(d => [d.key, d.score])), hasData: true, completedAt: a.completedAt };
+}
+
+function toArr(dims) { return Object.entries(dims).map(([key, score]) => ({ key, score })); }
+
+async function buildGap(parentId, childId) {
+  const [p, c] = await Promise.all([parentDimensions(parentId), childDimensions(childId, parentId)]);
+  return {
+    parent: { hasData: p.hasData, completedAt: p.completedAt, dimensions: toArr(p.dims) },
+    child: { hasData: c.hasData, completedAt: c.completedAt, dimensions: toArr(c.dims) },
+    gap: (p.hasData && c.hasData) ? gapReport(toArr(p.dims), toArr(c.dims)) : [],
+  };
+}
+
+// GET /api/parenting/gap?childUserId= — caller (parent) vs a linked child.
+router.get('/gap', async (req, res, next) => {
+  try {
+    const { childUserId } = req.query;
+    if (!mongoose.Types.ObjectId.isValid(childUserId)) {
+      return res.status(400).json({ error: 'valid childUserId required' });
+    }
+    const link = await ParentingLink.findOne({ parentUserId: req.user._id, childUserId });
+    if (!link) return res.status(403).json({ error: 'No link to this child' });
+    res.json(await buildGap(req.user._id, childUserId));
+  } catch (err) { next(err); }
+});
+
 // ---- admin: users + family links ------------------------------------------
 
 // GET /api/parenting/admin/users — all users (for the parent console picker).
@@ -290,6 +338,67 @@ router.delete('/admin/links/:id', requireAdmin, async (req, res, next) => {
     const link = await ParentingLink.findOneAndDelete({ _id: req.params.id, parentUserId: req.user._id });
     if (!link) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/parenting/admin/gap?parentUserId=&childUserId= — any pair (admin).
+router.get('/admin/gap', requireAdmin, async (req, res, next) => {
+  try {
+    const { parentUserId, childUserId } = req.query;
+    if (!mongoose.Types.ObjectId.isValid(parentUserId) || !mongoose.Types.ObjectId.isValid(childUserId)) {
+      return res.status(400).json({ error: 'valid parentUserId and childUserId required' });
+    }
+    res.json(await buildGap(parentUserId, childUserId));
+  } catch (err) { next(err); }
+});
+
+// GET /api/parenting/admin/attempts?userId=&instrumentKey=&cursor= — any user's history (admin).
+router.get('/admin/attempts', requireAdmin, async (req, res, next) => {
+  try {
+    const q = parseHistoryQuery(req);
+    if (q.error) return res.status(400).json({ error: q.error });
+    if (!mongoose.Types.ObjectId.isValid(req.query.userId)) {
+      return res.status(400).json({ error: 'valid userId required' });
+    }
+    const filter = { userId: req.query.userId };
+    if (q.instrumentKey) filter.instrumentKey = q.instrumentKey;
+    if (q.cursor) filter.completedAt = { $lt: q.cursor };
+    const docs = await ParentingAttempt.find(filter).sort({ completedAt: -1 }).limit(q.limit + 1).lean();
+    const more = docs.length > q.limit;
+    const page = more ? docs.slice(0, q.limit) : docs;
+    res.json({
+      items: page.map(d => historyItem(d, getInstrument(d.instrumentKey))),
+      nextCursor: more ? page[page.length - 1].completedAt.toISOString() : null,
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/parenting/admin/config — active version pointers + available versions.
+router.get('/admin/config', requireAdmin, async (_req, res, next) => {
+  try {
+    const cfg = await getParentingConfig();
+    const activeByKey = Object.fromEntries(cfg.active.map(a => [a.instrumentKey, a.version]));
+    res.json(listInstruments().map(i => ({
+      instrumentKey: i.key,
+      title: i.title,
+      availableVersions: [i.version],
+      activeVersion: activeByKey[i.key] ?? i.version,
+    })));
+  } catch (err) { next(err); }
+});
+
+// PUT /api/parenting/admin/config — set active version. Body: { instrumentKey, version }.
+router.put('/admin/config', requireAdmin, async (req, res, next) => {
+  try {
+    const { instrumentKey, version } = req.body || {};
+    const inst = getInstrument(instrumentKey, version);
+    if (!inst) return res.status(400).json({ error: 'Unknown instrument or version' });
+    const cfg = await getParentingConfig();
+    const existing = cfg.active.find(a => a.instrumentKey === instrumentKey);
+    if (existing) existing.version = version;
+    else cfg.active.push({ instrumentKey, version });
+    await cfg.save();
+    res.json({ instrumentKey, version });
   } catch (err) { next(err); }
 });
 

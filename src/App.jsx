@@ -25,6 +25,8 @@ import ParentingQuiz from './pages/ParentingQuiz';
 import ParentingResult from './pages/ParentingResult';
 import ParentingHistory from './pages/ParentingHistory';
 import ParentingKidQuiz from './pages/ParentingKidQuiz';
+import ParentingGap from './pages/ParentingGap';
+import ParentingAdmin from './pages/ParentingAdmin';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -58,6 +60,8 @@ function AppInner() {
                   <Route path="/parenting/kid/:key" element={<ParentingKidQuiz />} />
                   <Route path="/parenting/result/:id" element={<ParentingResult />} />
                   <Route path="/parenting/history" element={<ParentingHistory />} />
+                  <Route path="/parenting/gap" element={<ParentingGap />} />
+                  <Route path="/parenting/admin" element={<ParentingAdmin />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

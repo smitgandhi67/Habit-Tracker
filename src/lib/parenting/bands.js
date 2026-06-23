@@ -75,6 +75,21 @@ export const SCALE_FACTORS = {
   },
 };
 
+// Shared dimension labels (used in the gap report).
+export const DIMENSION_LABELS = {
+  warmth: 'Warmth',
+  consistency: 'Consistency',
+  responsiveness: 'Responsiveness',
+  demandingness: 'Demandingness',
+};
+
+// Alignment between a parent's self-view and the child's experience.
+export const ALIGNMENT = {
+  aligned: { label: 'Aligned', color: 'emerald', note: 'You and your child see this similarly.' },
+  'some-gap': { label: 'Some gap', color: 'amber', note: 'A noticeable difference worth a conversation.' },
+  'large-gap': { label: 'Large gap', color: 'rose', note: 'You and your child see this quite differently.' },
+};
+
 export const PARENTING_DISCLAIMER =
   'This is a self-reflection tool based on published research questionnaires. ' +
   'It is not a clinical diagnosis and is not a substitute for advice from a ' +
