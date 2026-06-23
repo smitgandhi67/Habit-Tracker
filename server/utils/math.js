@@ -39,9 +39,10 @@ function isoWeekKey(dateStr) {
   return `${isoYear}-W${String(week).padStart(2, '0')}`;
 }
 
-// Points earned per first-try-correct answer, by operation. Subtraction is worth
-// more to reward the harder skill. Keep in sync with src/lib/mathRewards.js.
+// Points earned per first-try-correct answer, by operation. Harder skills earn more:
+// division (4) > subtraction (3) > add/multiply (1). Keep in sync with src/lib/mathRewards.js.
 function pointsForOp(op) {
+  if (op === 'div') return 4;
   return op === 'sub' ? 3 : 1;
 }
 

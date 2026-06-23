@@ -50,27 +50,39 @@ export function pickQuestion(retiredKeys = [], lastKey = null, max = MAX_OPERAND
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 
-// Generate an addition/subtraction question within `max` (operands + result capped).
-// Subtraction stays non-negative. Returns the unified question shape with op + answer.
-// Avoids an immediate repeat of `lastKey`.
+// One add/sub/div instance within `max`. Add caps the sum, sub stays non-negative,
+// div is exact integer division (dividend = divisor × quotient, both ≥ 2, dividend ≤ max).
+function genArithmetic(op, max) {
+  if (op === 'add') {
+    const a = randInt(1, Math.max(1, max - 1));
+    const b = randInt(1, Math.max(1, max - a)); // a + b <= max
+    return { a, b, answer: a + b };
+  }
+  if (op === 'div') {
+    // Cap the divisor so a quotient of ≥ 2 always fits under `max`.
+    const b = randInt(2, Math.max(2, Math.min(12, Math.floor(max / 2))));
+    const q = randInt(2, Math.max(2, Math.floor(max / b)));
+    const a = b * q; // a ÷ b = q, exact
+    return { a, b, answer: q };
+  }
+  // sub — result a - b >= 0
+  const a = randInt(1, max);
+  const b = randInt(0, a);
+  return { a, b, answer: a - b };
+}
+
+// Generate an addition/subtraction/division question within `max`. Returns the unified
+// question shape with op + answer. Avoids an immediate repeat of `lastKey`.
 export function pickArithmetic(op, max = 20, lastKey = null) {
   for (let tries = 0; tries < 25; tries++) {
-    let a, b;
-    if (op === 'add') {
-      a = randInt(1, Math.max(1, max - 1));
-      b = randInt(1, Math.max(1, max - a)); // a + b <= max
-    } else { // sub — result a - b >= 0
-      a = randInt(1, max);
-      b = randInt(0, a);
-    }
+    const { a, b, answer } = genArithmetic(op, max);
     const key = `${op}:${a}:${b}`;
     if (key === lastKey) continue;
-    return { a, b, key, op, answer: op === 'add' ? a + b : a - b };
+    return { a, b, key, op, answer };
   }
   // Fallback (extremely unlikely to loop out): accept a repeat.
-  const a = op === 'add' ? randInt(1, Math.max(1, max - 1)) : randInt(1, max);
-  const b = op === 'add' ? randInt(1, Math.max(1, max - a)) : randInt(0, a);
-  return { a, b, key: `${op}:${a}:${b}`, op, answer: op === 'add' ? a + b : a - b };
+  const { a, b, answer } = genArithmetic(op, max);
+  return { a, b, key: `${op}:${a}:${b}`, op, answer };
 }
 
 // Four shuffled answer choices: the correct value + 3 plausible near-miss distractors.

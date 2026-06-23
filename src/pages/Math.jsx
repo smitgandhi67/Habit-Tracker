@@ -13,8 +13,9 @@ const OPS = [
   { key: 'mul', symbol: '×', label: 'Multiply' },
   { key: 'add', symbol: '+', label: 'Add' },
   { key: 'sub', symbol: '−', label: 'Subtract' },
+  { key: 'div', symbol: '÷', label: 'Divide' },
 ];
-const OP_SYMBOL = { mul: '×', add: '+', sub: '−' };
+const OP_SYMBOL = { mul: '×', add: '+', sub: '−', div: '÷' };
 
 export default function MathPage() {
   const { user } = useAuth();

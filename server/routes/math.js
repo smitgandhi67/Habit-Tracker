@@ -22,19 +22,22 @@ const {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RETIRE_AT = 2; // first-try-corrects on distinct days needed to retire a fact for the week
-const OPS = ['mul', 'add', 'sub'];
-const ADDSUB_MAX = 100; // server-side sanity bound for add/sub operands (client caps tighter by grade)
+const OPS = ['mul', 'add', 'sub', 'div'];
+const ADDSUB_MAX = 100; // server-side sanity bound for add/sub/div operands (client caps tighter by grade)
 
 // Operand validity differs by operation: multiplication uses the 2..20 table universe
-// (mastery keys assume it); add/sub allow non-negative integers up to a sane bound.
+// (mastery keys assume it); add/sub/div allow non-negative integers up to a sane bound.
+// Division additionally requires a non-zero divisor.
 function validOperands(op, a, b) {
   if (op === 'mul') return isValidOperand(a) && isValidOperand(b);
+  if (op === 'div') return Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 1 && a <= ADDSUB_MAX && b <= ADDSUB_MAX;
   return Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a <= ADDSUB_MAX && b <= ADDSUB_MAX;
 }
 
 function isCorrectAnswer(op, a, b, answer) {
   if (op === 'mul') return a * b === answer;
   if (op === 'add') return a + b === answer;
+  if (op === 'div') return b !== 0 && a % b === 0 && a / b === answer; // exact integer division only
   return a - b === answer; // sub
 }
 

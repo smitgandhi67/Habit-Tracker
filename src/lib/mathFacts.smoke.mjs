@@ -86,6 +86,19 @@ for (let i = 0; i < 400; i++) {
 }
 assert('sub non-negative within cap, answer correct', subOk, 'sub generation invariant broke');
 
+// division: exact integer quotient, dividend within cap, divisor >= 2, no immediate repeat
+for (const max of [20, 40]) {
+  let divOk = true, divLast = null;
+  for (let i = 0; i < 400; i++) {
+    const q = pickArithmetic('div', max, divLast);
+    if (q.op !== 'div' || q.b < 2 || q.a > max || q.a % q.b !== 0 || q.answer !== q.a / q.b || q.answer < 2 || q.key === divLast) {
+      divOk = false; break;
+    }
+    divLast = q.key;
+  }
+  assert(`div exact within cap ${max}, no repeat`, divOk, 'div generation invariant broke');
+}
+
 // generic choices include the correct value and are distinct
 const gc = choicesForAnswer(17, 8, 9);
 eq('choicesForAnswer length 4', gc.length, 4);

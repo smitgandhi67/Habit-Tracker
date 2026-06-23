@@ -6,9 +6,10 @@ export const DEFAULT_REWARDS = [
   { key: 'sleepover', label: 'Sleepover', costPoints: 2660, unit: 'event'  },
 ];
 
-// Points earned per first-try-correct answer, by operation. Subtraction is worth
-// more to reward the harder skill. Keep in sync with server/utils/math.js.
+// Points earned per first-try-correct answer, by operation. Harder skills earn more:
+// division (4) > subtraction (3) > add/multiply (1). Keep in sync with server/utils/math.js.
 export function pointsForOp(op) {
+  if (op === 'div') return 4;
   return op === 'sub' ? 3 : 1;
 }
 
