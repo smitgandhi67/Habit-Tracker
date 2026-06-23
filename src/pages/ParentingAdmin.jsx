@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, ShieldCheck, Trash2, Link2, BarChart3 } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, Trash2, Link2, BarChart3, FileSearch } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,6 +25,15 @@ export default function ParentingAdmin() {
   const [config, setConfig] = useState([]);
   const [pick, setPick] = useState('');
   const [error, setError] = useState(null);
+  const [reviewUser, setReviewUser] = useState('');
+  const [reviewAttempts, setReviewAttempts] = useState(null);
+
+  useEffect(() => {
+    if (!reviewUser) { setReviewAttempts(null); return; }
+    apiFetch(`/api/parenting/admin/attempts?userId=${reviewUser}`)
+      .then(r => setReviewAttempts(r.items))
+      .catch(e => toast.error(e.message || 'Could not load attempts'));
+  }, [reviewUser]);
 
   const loadLinks = useCallback(() => {
     apiFetch('/api/parenting/admin/links').then(setLinks).catch(e => setError(e.message));
@@ -97,6 +106,27 @@ export default function ParentingAdmin() {
       <Card title="Compare with your child" icon={BarChart3}>
         <p className="text-sm text-slate-500 mb-3">See how your self-report compares with your child’s experience.</p>
         <Link to="/parenting/gap" className="inline-flex rounded-2xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">Open gap report</Link>
+      </Card>
+
+      <Card title="Review raw answers" icon={FileSearch}>
+        <p className="text-sm text-slate-500 mb-3">See every question and the exact answer given — useful to check if a child understood an item.</p>
+        <select value={reviewUser} onChange={e => setReviewUser(e.target.value)} className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm mb-3">
+          <option value="">Choose a person…</option>
+          {users.map(u => <option key={u._id} value={u._id}>{u.name || u.email}</option>)}
+        </select>
+        {reviewAttempts && reviewAttempts.length === 0 && <p className="text-xs text-slate-400">No quizzes taken yet.</p>}
+        <div className="space-y-2">
+          {reviewAttempts?.map(a => (
+            <button
+              key={a._id}
+              onClick={() => navigate(`/parenting/answers/${a._id}`)}
+              className="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 rounded-2xl px-4 py-2.5 text-sm"
+            >
+              <span className="text-slate-700">{a.title}</span>
+              <span className="text-slate-400">{new Date(a.completedAt).toLocaleDateString()}</span>
+            </button>
+          ))}
+        </div>
       </Card>
 
       <Card title="Instruments">

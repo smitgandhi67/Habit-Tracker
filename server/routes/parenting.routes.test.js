@@ -182,6 +182,20 @@ test('GET /attempts/:id with bad id is 404', async () => {
   assert.equal(res.status, 404);
 });
 
+test('GET /attempts/:id/responses returns per-question answers; non-owner 403', async () => {
+  const created = await (await fetch(`${base}/api/parenting/attempts`, {
+    method: 'POST', headers: { Cookie: ckA, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'style', responses: authoritativeResponses() }),
+  })).json();
+  const res = await fetch(`${base}/api/parenting/attempts/${created._id}/responses`, { headers: { Cookie: ckA } });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.items.length, 32);
+  assert.ok(body.items[0].text && body.items[0].answer && body.items[0].value);
+  const forbidden = await fetch(`${base}/api/parenting/attempts/${created._id}/responses`, { headers: { Cookie: ckB } });
+  assert.equal(forbidden.status, 403);
+});
+
 test('GET /attempts returns caller history with cursor pagination', async () => {
   const u = new mongoose.Types.ObjectId().toString();
   const ck = cookie(u, 'hist.e2e@example.com');

@@ -230,6 +230,48 @@ router.get('/attempts/:id', async (req, res, next) => {
   }
 });
 
+// GET /api/parenting/attempts/:id/responses — every question with the raw answer
+// chosen, grouped by subscale. Owner or admin only. Lets a parent verify whether
+// a child understood each item and which answers drove a result.
+router.get('/attempts/:id/responses', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const attempt = await ParentingAttempt.findById(req.params.id);
+    if (!attempt) return res.status(404).json({ error: 'Not found' });
+    const owner = String(attempt.userId) === String(req.user._id);
+    if (!owner && !isAdmin(req)) return res.status(403).json({ error: 'Not authorised' });
+
+    const inst = getInstrument(attempt.instrumentKey);
+    const itemById = new Map((inst?.items || []).map(it => [it.id, it]));
+    const optByVal = new Map((inst?.options || []).map(o => [o.value, o.label]));
+    const subLabel = new Map((inst?.subscales || []).map(s => [s.key, s.label]));
+    const items = (attempt.responses || []).map(r => {
+      const it = itemById.get(r.itemId) || {};
+      return {
+        itemId: r.itemId,
+        text: it.text || r.itemId,
+        subscale: it.subscale || null,
+        subscaleLabel: subLabel.get(it.subscale) || it.subscale || null,
+        reverse: !!it.reverse,
+        value: r.value,
+        answer: optByVal.get(r.value) ?? String(r.value),
+      };
+    });
+    res.json({
+      _id: attempt._id,
+      title: inst ? inst.title : attempt.instrumentKey,
+      instrumentKey: attempt.instrumentKey,
+      responseScale: inst?.responseScale || null,
+      completedAt: attempt.completedAt,
+      items,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---- gap report -----------------------------------------------------------
 
 // Most-recent value per dimension across a parent's self-report attempts
