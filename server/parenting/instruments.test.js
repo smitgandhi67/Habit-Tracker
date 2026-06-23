@@ -4,6 +4,8 @@ const { scoreInstrument } = require('./scoring');
 const style = require('./instruments/style');
 const scale = require('./instruments/scale');
 const childView = require('./instruments/child_view');
+const pressure = require('./instruments/pressure');
+const kidPressure = require('./instruments/kid_pressure');
 
 // Build a full response set by assigning each item a value based on its facet.
 function responsesByFacet(inst, facetValues, fallback) {
@@ -137,4 +139,58 @@ test('child_view: interpretation has no clinical styleKey and is gentle', () => 
   const res = scoreInstrument(childView, childAll(2));
   assert.equal(res.interpretation.styleKey, undefined);
   assert.match(res.interpretation.kidSummary, /thanks/i);
+});
+
+// --- Strictness & Pressure (parent) -----------------------------------------
+// Healthy = high structure + high autonomy support + low guilt + low conditional
+// regard, accounting for reverse-keyed items. Harmful = the opposite (structure
+// stays high — high structure is never the concern).
+function pressureSet(healthy) {
+  return pressure.items.map(it => {
+    let v;
+    if (it.subscale === 'behavioral_control') v = 5;
+    else if (it.subscale === 'autonomy_support') v = healthy ? (it.reverse ? 1 : 5) : (it.reverse ? 5 : 1);
+    else v = healthy ? (it.reverse ? 5 : 1) : (it.reverse ? 1 : 5); // PC, CR
+    return { itemId: it.id, value: v };
+  });
+}
+
+test('pressure: healthy answers => no concerns, low guilt & conditional regard', () => {
+  const res = scoreInstrument(pressure, pressureSet(true));
+  const d = Object.fromEntries(res.dimensions.map(x => [x.key, x.score]));
+  assert.equal(d.psychological_control, 0);
+  assert.equal(d.conditional_regard, 0);
+  assert.equal(d.behavioral_control, 1);
+  assert.equal(res.interpretation.bands.concerns.length, 0);
+});
+
+test('pressure: harmful answers => guilt + conditional regard + low autonomy flagged, structure still fine', () => {
+  const res = scoreInstrument(pressure, pressureSet(false));
+  const d = Object.fromEntries(res.dimensions.map(x => [x.key, x.score]));
+  assert.equal(d.psychological_control, 1);
+  assert.equal(d.conditional_regard, 1);
+  assert.equal(d.behavioral_control, 1); // high structure is not a concern
+  assert.equal(res.interpretation.bands.concerns.length, 3);
+});
+
+// --- How Things Feel at Home (child) ----------------------------------------
+test('kid_pressure: shares the four control axes with the parent version + felt_pressure', () => {
+  const kidDims = new Set(kidPressure.dimensions.map(d => d.key));
+  const parentDims = new Set(pressure.dimensions.map(d => d.key));
+  for (const k of ['behavioral_control', 'autonomy_support', 'psychological_control', 'conditional_regard']) {
+    assert.ok(kidDims.has(k) && parentDims.has(k), `shared axis ${k} missing`);
+  }
+  assert.ok(kidDims.has('felt_pressure'));
+  assert.equal(kidPressure.responseScale.max, 3);
+});
+
+test('kid_pressure: a content child => low felt pressure', () => {
+  // "fine" kid: rules yes, gets a say, no guilt/conditional regard, low felt pressure
+  const responses = kidPressure.items.map(it => ({
+    itemId: it.id,
+    value: ['psychological_control', 'conditional_regard', 'felt_pressure'].includes(it.subscale) ? 1 : 3,
+  }));
+  const res = scoreInstrument(kidPressure, responses);
+  const fp = res.dimensions.find(d => d.key === 'felt_pressure').score;
+  assert.equal(fp, 0);
 });

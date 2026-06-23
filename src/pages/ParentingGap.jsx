@@ -8,6 +8,32 @@ import { PARENTING_DISCLAIMER } from '../lib/parenting/bands';
 
 // Parent ↔ child gap report. The parent picks a linked child and sees how their
 // self-report compares to the child's experience on the shared dimensions.
+// Kid-only signal (no parent counterpart): does the child feel one-way pressure,
+// or do they ask-then-let-go? Only renders once the child has done the
+// "How Things Feel at Home" quiz.
+function FeltPressure({ dims }) {
+  const fp = (dims || []).find(d => d.key === 'felt_pressure');
+  if (!fp) return null;
+  const v = Math.round(fp.score * 100);
+  const high = fp.score >= 0.5;
+  return (
+    <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 mt-3">
+      <div className="flex justify-between items-baseline mb-1">
+        <span className="text-sm font-semibold text-slate-700">Does your child feel pressured?</span>
+        <span className="text-sm font-semibold tabular-nums text-slate-700">{v}%</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+        <div className={`h-full rounded-full ${high ? 'bg-rose-400' : 'bg-emerald-500'}`} style={{ width: `${v}%` }} />
+      </div>
+      <p className="text-xs text-slate-500 mt-2">
+        {high
+          ? 'Your child reports feeling one-way pressure / little say. Worth giving a real voice in low-stakes choices.'
+          : 'Low — your child mostly asks, then lets it go. They don’t feel boxed in.'}
+      </p>
+    </div>
+  );
+}
+
 export default function ParentingGap() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -86,6 +112,8 @@ export default function ParentingGap() {
                   <GapPairBars gap={gap.gap} />
                 </div>
               )}
+
+              <FeltPressure dims={gap.child.dimensions} />
             </>
           )}
           <p className="text-[11px] text-slate-400 mt-5 leading-relaxed">{PARENTING_DISCLAIMER}</p>

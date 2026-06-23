@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import SubscaleBars from '../components/SubscaleBars';
-import { styleInfo, SCALE_FACTORS, PARENTING_DISCLAIMER } from '../lib/parenting/bands';
+import { styleInfo, SCALE_FACTORS, AXIS_INFO, PARENTING_DISCLAIMER } from '../lib/parenting/bands';
 
 const STYLE_TINT = {
   emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
@@ -54,7 +54,18 @@ export default function ParentingResult() {
   const interp = result.interpretation || {};
   const isStyle = !!interp.styleKey;
   const isScale = !isStyle && !!interp.bands?.factors;
+  // Axis instruments (e.g. Strictness & Pressure): no typology, no factor bands —
+  // rendered from their normalized dimensions using AXIS_INFO meanings.
+  const axisDims = (result.dimensions || []).filter(d => AXIS_INFO[d.key]);
+  const isAxis = !isStyle && !isScale && axisDims.length > 0;
   const visibleSubscales = (result.subscales || []).filter(s => !s.hidden);
+
+  // concern = a healthy-low axis sitting high, or a healthy-high axis sitting low.
+  const axisConcern = (key, score) => {
+    const a = AXIS_INFO[key];
+    if (!a || a.adaptive === 'context') return false;
+    return a.adaptive === 'low' ? score >= 0.5 : score < 0.5;
+  };
 
   const style = isStyle ? styleInfo(interp.styleKey) : null;
   const scales = interp.bands?.scales || null;
@@ -132,6 +143,39 @@ export default function ParentingResult() {
             );
           })}
         </div>
+      )}
+
+      {/* AXIS instrument (Strictness & Pressure) */}
+      {isAxis && (
+        <>
+          <div className={`mt-2 rounded-3xl p-5 border ${interp.bands?.concerns?.length ? STYLE_TINT.amber : STYLE_TINT.emerald}`}>
+            <div className="flex items-center gap-2">
+              {interp.bands?.concerns?.length ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+              <p className="text-sm font-semibold">{interp.bands?.summary}</p>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {axisDims.map(d => {
+              const info = AXIS_INFO[d.key];
+              const concern = axisConcern(d.key, d.score);
+              const tint = info.adaptive === 'context' ? 'bg-sky-500' : concern ? 'bg-rose-400' : 'bg-emerald-500';
+              const tip = concern ? (info.highTip || info.lowTip) : null;
+              return (
+                <Card key={d.key}>
+                  <div className="flex justify-between items-baseline mb-1">
+                    <span className="text-sm font-semibold text-slate-700">{info.label}</span>
+                    <span className="text-sm font-semibold tabular-nums text-slate-700">{Math.round(d.score * 100)}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full rounded-full ${tint}`} style={{ width: `${Math.round(d.score * 100)}%` }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">{info.meaning}</p>
+                  {tip && <p className="text-xs text-rose-700 mt-1.5"><strong>Try:</strong> {tip}</p>}
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* STYLE: facet breakdown */}

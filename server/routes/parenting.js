@@ -246,12 +246,23 @@ async function parentDimensions(parentId) {
   return { dims, hasData: attempts.length > 0, completedAt: latestAt };
 }
 
-// Latest child's-view of a given parent.
+// Child's experience of a given parent, merged newest-first across ALL child
+// instruments (child_view, kid_pressure, …) so every kid-reported dimension is
+// available to the gap.
 async function childDimensions(childId, parentId) {
-  const a = await ParentingAttempt.findOne({ userId: childId, subjectUserId: parentId, instrumentKey: 'child_view' })
+  const attempts = await ParentingAttempt.find({ userId: childId, subjectUserId: parentId })
     .sort({ completedAt: -1 }).lean();
-  if (!a) return { dims: {}, hasData: false, completedAt: null };
-  return { dims: Object.fromEntries((a.dimensions || []).map(d => [d.key, d.score])), hasData: true, completedAt: a.completedAt };
+  const dims = {};
+  let latestAt = null;
+  let any = false;
+  for (const a of attempts) {
+    const inst = getInstrument(a.instrumentKey);
+    if (!inst || inst.audience !== 'child') continue;
+    any = true;
+    if (!latestAt) latestAt = a.completedAt;
+    for (const d of a.dimensions || []) if (!(d.key in dims)) dims[d.key] = d.score;
+  }
+  return { dims, hasData: any, completedAt: latestAt };
 }
 
 function toArr(dims) { return Object.entries(dims).map(([key, score]) => ({ key, score })); }

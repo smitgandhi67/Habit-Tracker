@@ -81,6 +81,41 @@ export const DIMENSION_LABELS = {
   consistency: 'Consistency',
   responsiveness: 'Responsiveness',
   demandingness: 'Demandingness',
+  behavioral_control: 'Structure & limits',
+  autonomy_support: 'Autonomy support',
+  psychological_control: 'Guilt / shame pressure',
+  conditional_regard: 'Love-with-conditions',
+  felt_pressure: 'Feeling pressured',
+};
+
+// Plain-language meaning of each axis, and which direction is healthy. Used to
+// label and color the Strictness & Pressure result. `adaptive`: which pole is
+// good ('high', 'low', or 'context' = high is fine, not a concern).
+export const AXIS_INFO = {
+  behavioral_control: {
+    label: 'Structure & limits', adaptive: 'context',
+    meaning: 'Clear rules, routines, and knowing what your kids are up to. Healthy — even a lot of it is fine.',
+  },
+  autonomy_support: {
+    label: 'Autonomy support', adaptive: 'high',
+    meaning: 'Giving reasons, offering choices within limits, and acknowledging how your kid feels. The healthy way to hold a high bar.',
+    lowTip: 'Add the “why” and a small choice when you set a limit, and name their feeling (“I know you wanted games”) even when the answer stays no.',
+  },
+  psychological_control: {
+    label: 'Guilt / shame pressure', adaptive: 'low',
+    meaning: 'Guilt, shame, disappointment, or going cold when a kid falls short. This — not high standards — is the part that can quietly harm.',
+    highTip: 'Swap “I’m disappointed in you” for “that wasn’t okay, and I still love you.” Correct the behavior, never withdraw warmth.',
+  },
+  conditional_regard: {
+    label: 'Love-with-conditions', adaptive: 'low',
+    meaning: 'Affection that rises and falls with how well your kid does. Kids often feel this even when parents don’t mean it.',
+    highTip: 'Make love visibly unconditional — warm the same whether they win or lose. Praise effort, not outcomes.',
+  },
+  felt_pressure: {
+    label: 'Feeling pressured', adaptive: 'low',
+    meaning: 'How much your child feels one-way pressure / no say — vs. asking, then letting it go.',
+    highTip: 'Give a real say in low-stakes choices (which book, when) so limits feel shared, not imposed.',
+  },
 };
 
 // Alignment between a parent's self-view and the child's experience.
