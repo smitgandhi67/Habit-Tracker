@@ -20,6 +20,7 @@ import MealsEditor from './pages/MealsEditor';
 import MathPage from './pages/Math';
 import MathAdmin from './pages/MathAdmin';
 import PointsHistory from './pages/PointsHistory';
+import Parenting from './pages/Parenting';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -48,6 +49,7 @@ function AppInner() {
                   <Route path="/math" element={<MathPage />} />
                   <Route path="/math/history" element={<PointsHistory />} />
                   <Route path="/math/admin" element={<MathAdmin />} />
+                  <Route path="/parenting" element={<Parenting />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

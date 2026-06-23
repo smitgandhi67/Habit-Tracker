@@ -27,6 +27,7 @@ const mealLogsRouter   = require('./routes/meal-logs');
 const bodyRouter       = require('./routes/body');
 const exportRouter     = require('./routes/export');
 const mathRouter       = require('./routes/math');
+const parentingRouter  = require('./routes/parenting');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -72,6 +73,7 @@ app.use('/api/meal-logs',   requireAuth, mealLogsRouter);
 app.use('/api/body',        requireAuth, bodyRouter);
 app.use('/api/export',      requireAuth, exportRouter);
 app.use('/api/math',        requireAuth, mathRouter);
+app.use('/api/parenting',   requireAuth, parentingRouter);
 
 app.use(errorHandler);
 
