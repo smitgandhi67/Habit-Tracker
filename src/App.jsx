@@ -21,6 +21,8 @@ import MathPage from './pages/Math';
 import MathAdmin from './pages/MathAdmin';
 import PointsHistory from './pages/PointsHistory';
 import Parenting from './pages/Parenting';
+import ParentingQuiz from './pages/ParentingQuiz';
+import ParentingResult from './pages/ParentingResult';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -50,6 +52,8 @@ function AppInner() {
                   <Route path="/math/history" element={<PointsHistory />} />
                   <Route path="/math/admin" element={<MathAdmin />} />
                   <Route path="/parenting" element={<Parenting />} />
+                  <Route path="/parenting/quiz/:key" element={<ParentingQuiz />} />
+                  <Route path="/parenting/result/:id" element={<ParentingResult />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

@@ -8,7 +8,7 @@
 // registry so the wiring (router, config seed) can be proven end-to-end first.
 
 const REGISTRY = {
-  // style:      require('./style'),       // Phase 1
+  style:         require('./style'),       // Phase 1
   // scale:      require('./scale'),       // Phase 2
   // child_view: require('./child_view'),  // Phase 3
 };
