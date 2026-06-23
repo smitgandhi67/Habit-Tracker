@@ -278,6 +278,163 @@ router.get('/gap', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ---- markdown report export -----------------------------------------------
+
+const CONCERN_FACETS = new Set(['physical_coercion', 'verbal_hostility', 'non_reasoning', 'indulgent']);
+const STYLE_BLURB = {
+  authoritative: 'High warmth paired with firm, reasoned structure — the profile most consistently linked to positive child outcomes.',
+  authoritarian: 'High control and demands with lower warmth and little negotiation.',
+  permissive: 'Warm and responsive, but with limited structure and follow-through.',
+  uninvolved: 'Lower engagement on both warmth and structure.',
+};
+const fmtDate = d => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'n/a');
+const pct = n => `${Math.round(n * 100)}%`;
+
+function renderStyle(md, attempt) {
+  const inst = getInstrument('style');
+  const labels = Object.fromEntries(inst.subscales.map(s => [s.key, s.label]));
+  const b = attempt.interpretation?.bands || {};
+  const sc = b.scales || {};
+  md.push(`### Parenting Style — PSDQ (taken ${fmtDate(attempt.completedAt)})`);
+  md.push('');
+  md.push(`**Predominant style: ${(attempt.interpretation?.styleKey || '').replace(/^\w/, c => c.toUpperCase())}** — ${STYLE_BLURB[attempt.interpretation?.styleKey] || ''}`);
+  md.push('');
+  md.push('| Style scale | Score (1–5) |');
+  md.push('|---|---|');
+  md.push(`| Authoritative | ${sc.authoritative ?? '–'} |`);
+  md.push(`| Authoritarian | ${sc.authoritarian ?? '–'} |`);
+  md.push(`| Permissive | ${sc.permissive ?? '–'} |`);
+  md.push('');
+  md.push('| Facet | Score (1–5) | Type |');
+  md.push('|---|---|---|');
+  for (const s of attempt.subscales || []) {
+    md.push(`| ${labels[s.key] || s.key} | ${s.mean} | ${CONCERN_FACETS.has(s.key) ? 'watch' : 'positive'} |`);
+  }
+  md.push('');
+}
+
+function renderScale(md, attempt) {
+  const b = attempt.interpretation?.bands || {};
+  const f = b.factors || {}; const cut = b.cutoffs || {}; const flag = b.flags || {};
+  md.push(`### Discipline — Parenting Scale (taken ${fmtDate(attempt.completedAt)})`);
+  md.push('');
+  md.push('Higher = more dysfunctional discipline. Thresholds are published clinical reflection points.');
+  md.push('');
+  md.push('| Factor | Score (1–7) | Threshold | Flag |');
+  md.push('|---|---|---|---|');
+  for (const k of ['laxness', 'overreactivity', 'hostility']) {
+    md.push(`| ${k.replace(/^\w/, c => c.toUpperCase())} | ${f[k] ?? '–'} | ${cut[k] ?? '–'} | ${flag[k] ? '⚠ elevated' : 'typical'} |`);
+  }
+  md.push(`| **Total** | ${b.total ?? '–'} | ${cut.total ?? '–'} | ${flag.total ? '⚠ elevated' : 'typical'} |`);
+  md.push('');
+  md.push(`_${b.summary || ''}_`);
+  md.push('');
+}
+
+async function buildReportMarkdown(parentId, includeChildren) {
+  const parent = await User.findById(parentId).select('name email').lean();
+  const [style, scale] = await Promise.all([
+    ParentingAttempt.findOne({ userId: parentId, subjectUserId: parentId, instrumentKey: 'style' }).sort({ completedAt: -1 }).lean(),
+    ParentingAttempt.findOne({ userId: parentId, subjectUserId: parentId, instrumentKey: 'scale' }).sort({ completedAt: -1 }).lean(),
+  ]);
+
+  const md = [];
+  md.push('# Parenting Assessment Report');
+  md.push('');
+  md.push(`_Generated ${fmtDate(new Date())} • HabitTracker Parenting module_`);
+  md.push('');
+  md.push('Validated questionnaire results for one family. Instruments: **PSDQ** (parenting style; Robinson et al. 1995/2001), **Parenting Scale** (discipline; Arnold et al. 1993, revised scoring Rhoades & O\'Leary 2007), **APQ-C** (child report; Frick 1991; Shelton et al. 1996). These are this family\'s own self-/child-reports — a reflection tool, **not a clinical diagnosis**.');
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push(`## Parent: ${parent?.name || 'Unknown'}`);
+  md.push('');
+  if (style) renderStyle(md, style); else md.push('_Parenting Style quiz not taken yet._\n');
+  if (scale) renderScale(md, scale); else md.push('_Parenting Scale (discipline) quiz not taken yet._\n');
+
+  const suggestions = [];
+  if (style) {
+    const facet = Object.fromEntries((style.subscales || []).map(s => [s.key, s.mean]));
+    if ((facet.verbal_hostility ?? 0) >= 2.5) suggestions.push('Calm-voice follow-through: one warning, then the same calm consequence — no repeating or raising your voice. (Verbal-hostility facet is elevated.)');
+    if ((facet.indulgent ?? 0) >= 3) suggestions.push('Hold one limit a day all the way through, even when it causes a fuss. (Indulgent facet is elevated.)');
+  }
+  if (scale) {
+    const flag = scale.interpretation?.bands?.flags || {};
+    if (flag.overreactivity) suggestions.push('Pause-before-reacting: a 3-breath gap before responding to misbehavior. (Over-reactivity is elevated.)');
+    if (flag.hostility) suggestions.push('Replace harsh/loud responses with a brief, firm consequence; step away if anger spikes. (Hostility is elevated.)');
+    if (flag.laxness) suggestions.push('Do-what-I-said: carry out every stated consequence. (Laxness is elevated.)');
+  }
+
+  if (includeChildren) {
+    const links = await ParentingLink.find({ parentUserId: parentId }).lean();
+    if (links.length) {
+      md.push('---');
+      md.push('');
+      md.push('## Children');
+      md.push('');
+      for (const link of links) {
+        const child = await User.findById(link.childUserId).select('name').lean();
+        const cv = await ParentingAttempt.findOne({ userId: link.childUserId, subjectUserId: parentId, instrumentKey: 'child_view' }).sort({ completedAt: -1 }).lean();
+        const name = child?.name || link.label || 'Child';
+        md.push(`### ${name} — "How I See My Parent" (APQ-C${cv ? `, taken ${fmtDate(cv.completedAt)}` : ''})`);
+        md.push('');
+        if (cv) {
+          const dims = Object.fromEntries((cv.dimensions || []).map(d => [d.key, d.score]));
+          md.push(`How this child experiences your parenting: **Warmth ${pct(dims.warmth ?? 0)}**, **Consistency ${pct(dims.consistency ?? 0)}**.`);
+          md.push('');
+          const gap = await buildGap(parentId, link.childUserId);
+          if (gap.gap.length) {
+            md.push(`#### Gap — You vs ${name}`);
+            md.push('');
+            md.push('| Dimension | You | Child | Difference | Alignment |');
+            md.push('|---|---|---|---|---|');
+            for (const g of gap.gap) {
+              md.push(`| ${g.key.replace(/^\w/, c => c.toUpperCase())} | ${pct(g.parent)} | ${pct(g.child)} | ${(g.delta >= 0 ? '+' : '')}${Math.round(g.delta * 100)}% | ${g.alignment} |`);
+              if (g.alignment !== 'aligned' && g.key === 'consistency' && g.delta > 0) {
+                suggestions.push(`Consistency gap with ${name}: your child experiences rules as less consistent than you do. Same consequence every time closes it.`);
+              }
+            }
+            md.push('');
+          }
+        } else {
+          md.push('_This child has not taken the quiz yet._');
+          md.push('');
+        }
+      }
+    }
+  }
+
+  md.push('---');
+  md.push('');
+  md.push('## Suggested focus areas (auto-generated from your scores)');
+  md.push('');
+  if (suggestions.length) for (const s of [...new Set(suggestions)]) md.push(`- ${s}`);
+  else md.push('- No elevated areas flagged. Keep pairing warmth with consistent follow-through; re-take in ~3 months to track change.');
+  md.push('');
+  md.push('## How to read these scores');
+  md.push('');
+  md.push('- **PSDQ style scales (1–5):** higher = more of that style. Predominant style = highest scale; warm + structured = Authoritative.');
+  md.push('- **Parenting Scale factors (1–7):** higher = more dysfunctional discipline; compare to the thresholds shown.');
+  md.push('- **Gap %:** each dimension is normalized 0–100% so parent self-report and child report are comparable. Aligned <15 pts, some-gap 15–30, large-gap >30.');
+  md.push('');
+  md.push('## Prompts for an AI parenting coach');
+  md.push('');
+  md.push('1. Given these scores, what are my top 2 strengths and top 2 growth areas?');
+  md.push('2. Turn the growth areas into specific daily habits I can track for 8 weeks.');
+  md.push('3. Where my child and I see things differently, what conversation could I have with them?');
+  md.push('4. What does the research say about my predominant style for kids aged 7–10?');
+  md.push('');
+  return md.join('\n');
+}
+
+// GET /api/parenting/export — full family report as markdown (admin gets children).
+router.get('/export', async (req, res, next) => {
+  try {
+    const md = await buildReportMarkdown(req.user._id, isAdmin(req));
+    res.json({ filename: `parenting-report-${new Date().toISOString().slice(0, 10)}.md`, markdown: md });
+  } catch (err) { next(err); }
+});
+
 // ---- admin: users + family links ------------------------------------------
 
 // GET /api/parenting/admin/users — all users (for the parent console picker).

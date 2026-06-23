@@ -1,8 +1,26 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HeartHandshake, ChevronRight, History, Users } from 'lucide-react';
+import { HeartHandshake, ChevronRight, History, Users, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+
+async function downloadReport() {
+  try {
+    const { filename, markdown } = await apiFetch('/api/parenting/export');
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast.error(e.message || 'Could not generate report');
+  }
+}
 
 // Parenting assessment hub. Lists the available research-based questionnaires
 // and routes into each runner. Instruments are added phase by phase; until the
@@ -75,6 +93,16 @@ export default function Parenting() {
               <ChevronRight className="text-slate-300 shrink-0" size={20} />
             </button>
           )}
+          <button
+            onClick={downloadReport}
+            className="w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-slate-100 hover:border-violet-200 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <Download size={18} className="text-slate-400" />
+              <span className="font-medium text-slate-700">Download full report (.md)</span>
+            </div>
+            <ChevronRight className="text-slate-300 shrink-0" size={20} />
+          </button>
           {instruments.map(inst => (
             <button
               key={inst.key}

@@ -258,6 +258,22 @@ test('gap: parent vs linked child shows shared dimensions; unlinked caller 403; 
   assert.equal(adminGap.status, 200);
 });
 
+test('export: returns a markdown report including the parent style results', async () => {
+  const pid = new mongoose.Types.ObjectId().toString();
+  const pCk = cookie(pid, 'admin.e2e@example.com');
+  await fetch(`${base}/api/parenting/attempts`, {
+    method: 'POST', headers: { Cookie: pCk, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instrumentKey: 'style', responses: authoritativeResponses() }),
+  });
+  const res = await fetch(`${base}/api/parenting/export`, { headers: { Cookie: pCk } });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.match(body.filename, /parenting-report-\d{4}-\d{2}-\d{2}\.md/);
+  assert.match(body.markdown, /# Parenting Assessment Report/);
+  assert.match(body.markdown, /Parenting Style/);
+  assert.match(body.markdown, /Predominant style: Authoritative/);
+});
+
 test('admin config: lists active versions and updates them', async () => {
   const list = await (await fetch(`${base}/api/parenting/admin/config`, { headers: { Cookie: ckAdmin } })).json();
   assert.ok(list.some(c => c.instrumentKey === 'style' && c.activeVersion === 1));
