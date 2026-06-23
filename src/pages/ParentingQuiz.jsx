@@ -46,7 +46,7 @@ export default function ParentingQuiz() {
   }
 
   return (
-    <div className="px-4 py-2 pb-28">
+    <div className="px-4 py-2 pb-10">
       <button onClick={() => navigate('/parenting')} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2">
         <ArrowLeft size={16} /> Parenting
       </button>
@@ -89,31 +89,27 @@ export default function ParentingQuiz() {
         })}
       </div>
 
-      <p className="text-[11px] text-slate-400 mt-5 leading-relaxed">{PARENTING_DISCLAIMER}</p>
-
-      {/* Sticky progress + submit */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white/95 backdrop-blur border-t border-slate-200 px-4 py-3 flex items-center gap-3">
-        <div className="flex-1">
-          <div className="flex justify-between text-xs text-slate-500 mb-1">
-            <span>{answeredCount} of {total}</span>
-            <span>{Math.round((answeredCount / total) * 100)}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-            <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${(answeredCount / total) * 100}%` }} />
-          </div>
+      {/* Progress + submit — inline so it never collides with the global bottom nav */}
+      <div className="mt-6 bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
+        <div className="flex justify-between text-xs text-slate-500 mb-1">
+          <span>{answeredCount} of {total} answered</span>
+          <span>{Math.round((answeredCount / total) * 100)}%</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-4">
+          <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${(answeredCount / total) * 100}%` }} />
         </div>
         <button
           onClick={handleSubmit}
           disabled={submitting}
-          className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition-colors ${
-            complete && !submitting
-              ? 'bg-violet-600 text-white hover:bg-violet-700'
-              : 'bg-slate-200 text-slate-500'
+          className={`w-full rounded-2xl px-5 py-3 text-sm font-semibold transition-colors ${
+            complete && !submitting ? 'bg-violet-600 text-white hover:bg-violet-700' : 'bg-slate-200 text-slate-600'
           }`}
         >
-          {submitting ? 'Saving…' : 'See results'}
+          {submitting ? 'Saving…' : complete ? 'See results' : `Answer all ${total} to continue`}
         </button>
       </div>
+
+      <p className="text-[11px] text-slate-400 mt-5 leading-relaxed">{PARENTING_DISCLAIMER}</p>
     </div>
   );
 }
