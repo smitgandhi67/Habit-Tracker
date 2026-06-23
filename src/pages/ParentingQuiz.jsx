@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { ArrowLeft } from 'lucide-react';
 import { useParentingQuiz } from '../hooks/useParentingQuiz';
 import LikertScale from '../components/LikertScale';
+import AnchoredScale from '../components/AnchoredScale';
 import { PARENTING_DISCLAIMER } from '../lib/parenting/bands';
 
 // Adult questionnaire runner. All items on one scrollable page (lets parents
@@ -66,12 +67,23 @@ export default function ParentingQuiz() {
               <p className="text-sm font-medium text-slate-700 mb-3">
                 <span className="text-slate-400 mr-1">{idx + 1}.</span>{it.text}
               </p>
-              <LikertScale
-                options={form.options}
-                value={answers[it.id]}
-                onChange={v => setAnswer(it.id, v)}
-                name={`Q${idx + 1}`}
-              />
+              {form.format === 'anchored' ? (
+                <AnchoredScale
+                  options={form.options}
+                  value={answers[it.id]}
+                  onChange={v => setAnswer(it.id, v)}
+                  anchorLow={it.anchorLow}
+                  anchorHigh={it.anchorHigh}
+                  name={`Q${idx + 1}`}
+                />
+              ) : (
+                <LikertScale
+                  options={form.options}
+                  value={answers[it.id]}
+                  onChange={v => setAnswer(it.id, v)}
+                  name={`Q${idx + 1}`}
+                />
+              )}
             </div>
           );
         })}

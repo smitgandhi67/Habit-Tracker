@@ -44,9 +44,15 @@ function instrumentForm(inst) {
     audience: inst.audience,
     source: inst.source,
     description: inst.description,
+    format: inst.format || 'likert',  // 'likert' | 'anchored'
     responseScale: inst.responseScale,
     options: inst.options,            // [{ value, label }]
-    items: inst.items.map(it => ({ id: it.id, text: it.text })),
+    // anchored instruments carry per-item endpoint anchors; likert items omit them.
+    items: inst.items.map(it => (
+      it.anchorLow || it.anchorHigh
+        ? { id: it.id, text: it.text, anchorLow: it.anchorLow, anchorHigh: it.anchorHigh }
+        : { id: it.id, text: it.text }
+    )),
   };
 }
 
@@ -76,16 +82,20 @@ router.get('/instruments/:key', async (req, res, next) => {
 // Shape a stored attempt into a client result, re-attaching subscale labels from
 // the instrument (stored docs keep only keys). Falls back to the key as label.
 function attemptResult(attempt, inst) {
-  const labelByKey = inst ? Object.fromEntries(inst.subscales.map(s => [s.key, s.label])) : {};
+  const byKey = inst ? Object.fromEntries(inst.subscales.map(s => [s.key, s])) : {};
   return {
     _id: attempt._id,
     instrumentKey: attempt.instrumentKey,
     version: attempt.version,
     title: inst ? inst.title : attempt.instrumentKey,
     source: inst ? inst.source : undefined,
+    responseMax: inst ? inst.responseScale.max : 5,
     subjectUserId: attempt.subjectUserId,
     subscales: (attempt.subscales || []).map(s => ({
-      key: s.key, label: labelByKey[s.key] || s.key, raw: s.raw, mean: s.mean, n: s.n,
+      key: s.key,
+      label: byKey[s.key]?.label || s.key,
+      hidden: !!byKey[s.key]?.hidden,
+      raw: s.raw, mean: s.mean, n: s.n,
     })),
     dimensions: attempt.dimensions || [],
     interpretation: attempt.interpretation || {},
@@ -138,6 +148,57 @@ router.post('/attempts', async (req, res, next) => {
     });
 
     res.status(201).json(attemptResult(attempt, inst));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Compact row for history/trend lists.
+function historyItem(attempt, inst) {
+  const interp = attempt.interpretation || {};
+  return {
+    _id: attempt._id,
+    instrumentKey: attempt.instrumentKey,
+    title: inst ? inst.title : attempt.instrumentKey,
+    completedAt: attempt.completedAt,
+    styleKey: interp.styleKey || null,
+    total: interp.bands?.total ?? null,
+    dimensions: attempt.dimensions || [],
+  };
+}
+
+// Shared cursor parsing (mirrors the math ledger contract).
+function parseHistoryQuery(req) {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+  let cursor = null;
+  if (req.query.cursor) {
+    const d = new Date(req.query.cursor);
+    if (Number.isNaN(d.getTime())) return { error: 'invalid cursor' };
+    cursor = d;
+  }
+  return { limit, cursor, instrumentKey: typeof req.query.instrumentKey === 'string' ? req.query.instrumentKey : null };
+}
+
+// GET /api/parenting/attempts?instrumentKey=&cursor=&limit= — caller's own
+// history, newest first, cursor-paginated. Returns { items, nextCursor }.
+router.get('/attempts', async (req, res, next) => {
+  try {
+    const q = parseHistoryQuery(req);
+    if (q.error) return res.status(400).json({ error: q.error });
+    const filter = { userId: req.user._id };
+    if (q.instrumentKey) filter.instrumentKey = q.instrumentKey;
+    if (q.cursor) filter.completedAt = { $lt: q.cursor };
+
+    const docs = await ParentingAttempt.find(filter)
+      .sort({ completedAt: -1 })
+      .limit(q.limit + 1)
+      .lean();
+
+    const more = docs.length > q.limit;
+    const page = more ? docs.slice(0, q.limit) : docs;
+    const items = page.map(d => historyItem(d, getInstrument(d.instrumentKey)));
+    const nextCursor = more ? page[page.length - 1].completedAt.toISOString() : null;
+    res.json({ items, nextCursor });
   } catch (err) {
     next(err);
   }

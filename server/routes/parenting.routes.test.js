@@ -26,6 +26,18 @@ ParentingAttempt.create = async doc => {
   return saved;
 };
 ParentingAttempt.findById = async id => store.get(String(id)) || null;
+ParentingAttempt.find = filter => {
+  let arr = [...store.values()].filter(d => String(d.userId) === String(filter.userId));
+  if (filter.instrumentKey) arr = arr.filter(d => d.instrumentKey === filter.instrumentKey);
+  if (filter.completedAt?.$lt) arr = arr.filter(d => d.completedAt < filter.completedAt.$lt);
+  const q = {
+    _arr: arr,
+    sort() { this._arr.sort((a, b) => b.completedAt - a.completedAt); return this; },
+    limit(n) { this._n = n; return this; },
+    lean() { return Promise.resolve(this._n ? this._arr.slice(0, this._n) : this._arr); },
+  };
+  return q;
+};
 
 const requireAuth = require('../middleware/auth');
 const router = require('./parenting');
@@ -123,4 +135,29 @@ test('POST /attempts rejects unknown instrument with 404', async () => {
 test('GET /attempts/:id with bad id is 404', async () => {
   const res = await fetch(`${base}/api/parenting/attempts/not-an-id`, { headers: { Cookie: ckA } });
   assert.equal(res.status, 404);
+});
+
+test('GET /attempts returns caller history with cursor pagination', async () => {
+  const u = new mongoose.Types.ObjectId().toString();
+  const ck = cookie(u, 'hist.e2e@example.com');
+  // two attempts
+  for (let i = 0; i < 2; i++) {
+    await fetch(`${base}/api/parenting/attempts`, {
+      method: 'POST', headers: { Cookie: ck, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instrumentKey: 'style', responses: authoritativeResponses() }),
+    });
+  }
+  const all = await (await fetch(`${base}/api/parenting/attempts?instrumentKey=style`, { headers: { Cookie: ck } })).json();
+  assert.equal(all.items.length, 2);
+  assert.equal(all.nextCursor, null);
+  assert.ok(all.items[0].completedAt);
+
+  const firstPage = await (await fetch(`${base}/api/parenting/attempts?instrumentKey=style&limit=1`, { headers: { Cookie: ck } })).json();
+  assert.equal(firstPage.items.length, 1);
+  assert.ok(firstPage.nextCursor);
+});
+
+test('GET /attempts rejects an invalid cursor with 400', async () => {
+  const res = await fetch(`${base}/api/parenting/attempts?cursor=notadate`, { headers: { Cookie: ckA } });
+  assert.equal(res.status, 400);
 });

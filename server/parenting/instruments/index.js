@@ -9,7 +9,7 @@
 
 const REGISTRY = {
   style:         require('./style'),       // Phase 1
-  // scale:      require('./scale'),       // Phase 2
+  scale:         require('./scale'),       // Phase 2
   // child_view: require('./child_view'),  // Phase 3
 };
 

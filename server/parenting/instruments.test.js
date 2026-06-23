@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { scoreInstrument } = require('./scoring');
 const style = require('./instruments/style');
+const scale = require('./instruments/scale');
 
 // Build a full response set by assigning each item a value based on its facet.
 function responsesByFacet(inst, facetValues, fallback) {
@@ -57,4 +58,43 @@ test('style: instrument shape is valid (32 items, 7 facets, no duplicate ids)', 
   assert.equal(ids.size, 32);
   const facets = new Set(style.subscales.map(s => s.key));
   for (const it of style.items) assert.ok(facets.has(it.subscale), `item ${it.id} bad facet ${it.subscale}`);
+});
+
+// --- Parenting Scale ---------------------------------------------------------
+// Ideal answer = score 1 after reverse adjustment: value 1 for left-anchor items,
+// value 7 for reverse (right-anchor) items. Worst = the opposite.
+const idealScale = () => scale.items.map(it => ({ itemId: it.id, value: it.reverse ? 7 : 1 }));
+const worstScale = () => scale.items.map(it => ({ itemId: it.id, value: it.reverse ? 1 : 7 }));
+
+test('scale: shape is 30 items with 14 reverse (right-anchor) items', () => {
+  assert.equal(scale.items.length, 30);
+  assert.equal(scale.items.filter(i => i.reverse).length, 14);
+  assert.ok(scale.items.every(i => i.anchorLow && i.anchorHigh));
+});
+
+test('scale: ideal answers => all factor means 1, total 1, no flags', () => {
+  const res = scoreInstrument(scale, idealScale());
+  const b = res.interpretation.bands;
+  assert.equal(b.factors.laxness, 1);
+  assert.equal(b.factors.overreactivity, 1);
+  assert.equal(b.factors.hostility, 1);
+  assert.equal(b.total, 1);
+  assert.equal(b.flags.laxness || b.flags.overreactivity || b.flags.hostility || b.flags.total, false);
+});
+
+test('scale: worst answers => factor means 7, total 7, all flags elevated', () => {
+  const res = scoreInstrument(scale, worstScale());
+  const b = res.interpretation.bands;
+  assert.equal(b.factors.laxness, 7);
+  assert.equal(b.factors.hostility, 7);
+  assert.equal(b.total, 7);
+  assert.ok(b.flags.laxness && b.flags.overreactivity && b.flags.hostility && b.flags.total);
+});
+
+test('scale: consistency dimension is high for ideal, low for worst (gap-compatible)', () => {
+  const ideal = scoreInstrument(scale, idealScale());
+  const worst = scoreInstrument(scale, worstScale());
+  const c = r => r.dimensions.find(d => d.key === 'consistency').score;
+  assert.equal(c(ideal), 1); // laxness 1 -> inverted 7 -> normalized 1
+  assert.equal(c(worst), 0); // laxness 7 -> inverted 1 -> normalized 0
 });

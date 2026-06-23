@@ -55,6 +55,26 @@ export const CONCERN_FACETS = new Set([
   'physical_coercion', 'verbal_hostility', 'non_reasoning', 'indulgent',
 ]);
 
+// Parenting Scale (discipline) factors. `high` describes what an elevated score
+// means; `grow` is a concrete, research-aligned suggestion.
+export const SCALE_FACTORS = {
+  laxness: {
+    label: 'Laxness',
+    high: 'Giving in, not following through, or letting misbehavior go — inconsistent limits.',
+    grow: 'Pick a few non-negotiable limits and follow through every time, even when it causes a fuss. Consistency teaches more than the rule itself.',
+  },
+  overreactivity: {
+    label: 'Over-reactivity',
+    high: 'Responding to misbehavior with anger, irritability, or harshness that escalates.',
+    grow: 'Build in a pause before responding. A calm, brief consequence works better than an angry one and models regulation.',
+  },
+  hostility: {
+    label: 'Hostility',
+    high: 'Using physical force, insults, or harsh language during discipline.',
+    grow: 'Replace harsh responses with a brief, firm consequence. If anger spikes, step away and return when calm. Consider support if this is frequent.',
+  },
+};
+
 export const PARENTING_DISCLAIMER =
   'This is a self-reflection tool based on published research questionnaires. ' +
   'It is not a clinical diagnosis and is not a substitute for advice from a ' +

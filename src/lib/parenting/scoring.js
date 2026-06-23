@@ -75,7 +75,7 @@ export function scoreInstrument(config, responses) {
   const dimByKey = Object.fromEntries(dimensions.map(d => [d.key, d.score]));
 
   const interpretation = typeof config.interpret === 'function'
-    ? config.interpret(meanByKey, dimByKey)
+    ? config.interpret(meanByKey, dimByKey, subscales)
     : {};
 
   return { subscales, dimensions, interpretation };
