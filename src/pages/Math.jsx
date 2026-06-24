@@ -80,15 +80,21 @@ export default function MathPage() {
     grade(typed);
   }
 
-  // Auto-submit as soon as the typed number matches the correct answer — the kid
-  // never has to tap "Check" when right. A wrong number still waits for Check so
-  // partial entries (e.g. "1" on the way to "12") don't submit prematurely.
+  // Auto-submit once the kid has typed as many digits as the correct answer — graded
+  // right OR wrong. This removes the multi-attempt loophole: previously a wrong number
+  // waited for "Check" and stayed editable, letting the kid keep guessing. Now the first
+  // full-length entry is the one graded. Partial entries (e.g. "1" on the way to "12")
+  // still wait, since they're shorter than the answer.
   // Graded synchronously inside the keystroke gesture (NOT a useEffect): iOS only
   // lets focus() reopen the soft keyboard from within a user gesture, so handling
   // it here keeps the numpad open through the pause into the next question.
   function handleType(value) {
     setTyped(value);
-    if (phase === 'input' && value !== '' && question && Number(value) === question.answer) {
+    if (phase !== 'input' || value === '' || !question) return;
+    // Grade the instant it matches (no need to fill remaining digits), or once the
+    // entry is at least as long as the answer (a wrong guess of full length).
+    const answerLen = String(question.answer).length;
+    if (Number(value) === question.answer || value.length >= answerLen) {
       grade(value);
     }
   }
