@@ -1,5 +1,8 @@
-// Shared math helpers for the multiplication-practice feature.
-// Kept framework-free so the smoke test (server/utils/math.smoke.js) can run under plain node.
+// Shared math helpers + the Leitner schedule. Grading rules (factKey/trivial/points)
+// live in the question-type registry (./questionTypes) and are delegated here so
+// there is a single source of truth across all operations.
+
+const { factKeyFor, isTrivial, pointsForOp } = require('./questionTypes');
 
 const MIN_OPERAND = 2;
 const MAX_OPERAND = 20;
@@ -18,18 +21,8 @@ function canonicalKey(a, b) {
   return `${lo}x${hi}`;
 }
 
-// Per-operation canonical fact key (op is stored separately on the mastery row, so
-// keys are op-local). mul/add commute (min first); sub/div are ordered. Mirrors
-// src/lib/mathSchedule.js — keep in sync.
-function factKeyFor(op, a, b) {
-  if (op === 'add') return `${Math.min(a, b)}+${Math.max(a, b)}`;
-  if (op === 'sub') return `${a}-${b}`;
-  if (op === 'div') return `${a}/${b}`;
-  return canonicalKey(a, b); // mul
-}
-
-// Operands now include 0 and 1 (trivial facts, kept at low priority — see
-// isTrivialFact). mul operands range 0..MAX_OPERAND.
+// mul operand sanity bound (kept for the mul-table smoke test; the registry's
+// per-type validate() is the authoritative trust boundary in the route).
 function isValidOperand(n) {
   return Number.isInteger(n) && n >= 0 && n <= MAX_OPERAND;
 }
@@ -37,12 +30,13 @@ function isValidOperand(n) {
 // ---- Leitner spaced-repetition schedule -----------------------------------
 // A fact carries a mastery level + a dueDate. Mastering it (PROMOTE_AT first-try
 // corrects on distinct days) bumps the level and rests it for INTERVAL_WEEKS[level]
-// weeks; a first-try miss of a due fact demotes it DEMOTE_STEP levels, due now.
-// Mirrored in src/lib/mathSchedule.js — keep both in sync.
-const PROMOTE_AT = 2;                     // distinct-day corrects to advance a level
-const MAX_LEVEL = 5;
-const DEMOTE_STEP = 2;                     // levels dropped on a due-fact miss
-const INTERVAL_WEEKS = [0, 1, 2, 3, 4, 6]; // index = level; level 0 (new) is due now
+// weeks; a first-try miss of a due fact demotes it DEMOTE_STEP levels, due now. The
+// top of the ladder rests for months (a refresher ~twice a year) — durable recall
+// without ever fully retiring. Mirrored in src/lib/mathSchedule.js.
+const PROMOTE_AT = 2;                              // distinct-day corrects to advance a level
+const MAX_LEVEL = 7;
+const DEMOTE_STEP = 2;                             // levels dropped on a due-fact miss
+const INTERVAL_WEEKS = [0, 1, 2, 3, 4, 6, 12, 26]; // index = level; level 0 (new) is due now
 
 // 'YYYY-MM-DD' that is INTERVAL_WEEKS[level] weeks after dateStr (UTC-safe).
 function dueDateAfter(dateStr, level) {
@@ -52,16 +46,9 @@ function dueDateAfter(dateStr, level) {
   return dt.toISOString().slice(0, 10);
 }
 
-// A fact is "trivial" (kid already knows it) when an identity/zero operand is
-// involved: ×0/×1, +0, −0, ÷1. These are included for completeness but seeded at a
-// high level so they rest long and rarely surface.
-function isTrivialFact(op, a, b) {
-  if (op === 'mul') return a <= 1 || b <= 1;          // ×0 or ×1 (incl. 0)
-  if (op === 'add') return a === 0 || b === 0;        // +0
-  if (op === 'sub') return b === 0 || a === b;        // −0 or n−n
-  if (op === 'div') return b === 1 || a === b;        // ÷1 or n÷n
-  return false;
-}
+// Trivial (identity) facts — ×0/×1, +0, −0, ÷1, n−n, n÷n, √1 — are delegated to the
+// registry. They're included for completeness but seeded high so they rest long.
+const isTrivialFact = isTrivial;
 
 // Starting mastery level for a fact with no row yet: trivial facts start near the
 // top (long rest, low priority); everything else starts fresh (level 0, due now).
@@ -86,12 +73,7 @@ function isoWeekKey(dateStr) {
   return `${isoYear}-W${String(week).padStart(2, '0')}`;
 }
 
-// Points earned per first-try-correct answer, by operation. Harder skills earn more:
-// division (4) > subtraction (3) > add/multiply (1). Keep in sync with src/lib/mathRewards.js.
-function pointsForOp(op) {
-  if (op === 'div') return 4;
-  return op === 'sub' ? 3 : 1;
-}
+// pointsForOp is delegated to the registry (imported above) — re-exported below.
 
 // Current spendable balance — never negative.
 function balanceOf(reward) {

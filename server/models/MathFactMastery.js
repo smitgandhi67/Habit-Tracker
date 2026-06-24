@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 // dueDate out by INTERVAL_WEEKS[level]; a first-try miss demotes it, due now.
 const mathFactMasterySchema = new mongoose.Schema({
   userId:          { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  op:              { type: String, required: true, enum: ['mul', 'add', 'sub', 'div'] },
+  op:              { type: String, required: true }, // any registered question-type key; route validates membership
   factKey:         { type: String, required: true }, // op-local canonical key, e.g. '7x8', '3+5', '9-4', '12/3'
   level:           { type: Number, default: 0 },     // 0..MAX_LEVEL
   streakCount:     { type: Number, default: 0 },     // first-try corrects toward the next promotion (0..PROMOTE_AT)

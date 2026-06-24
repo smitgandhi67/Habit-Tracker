@@ -2,12 +2,18 @@
 // A fact carries a mastery level + a dueDate. Mastering it (PROMOTE_AT first-try
 // corrects on distinct days) bumps the level and rests it for INTERVAL_WEEKS[level]
 // weeks; a first-try miss of a due fact demotes it DEMOTE_STEP levels, due now.
+// The top of the ladder rests for months (a refresher ~twice a year) rather than
+// retiring — durable recall without ever fully forgetting.
 // KEEP IN SYNC with server/utils/math.js.
 
-export const PROMOTE_AT = 2;                       // distinct-day corrects to advance a level
-export const MAX_LEVEL = 5;
-export const DEMOTE_STEP = 2;                       // levels dropped on a due-fact miss
-export const INTERVAL_WEEKS = [0, 1, 2, 3, 4, 6];   // index = level; level 0 (new) is due now
+import { isTrivialFact } from './questionTypes.js';
+
+export { isTrivialFact };
+
+export const PROMOTE_AT = 2;                                  // distinct-day corrects to advance a level
+export const MAX_LEVEL = 7;
+export const DEMOTE_STEP = 2;                                 // levels dropped on a due-fact miss
+export const INTERVAL_WEEKS = [0, 1, 2, 3, 4, 6, 12, 26];     // index = level; level 0 (new) is due now
 
 // 'YYYY-MM-DD' that is INTERVAL_WEEKS[level] weeks after dateStr (UTC-safe).
 export function dueDateAfter(dateStr, level) {
@@ -17,18 +23,8 @@ export function dueDateAfter(dateStr, level) {
   return dt.toISOString().slice(0, 10);
 }
 
-// A fact is "trivial" (kid already knows it) when an identity/zero operand is
-// involved: ×0/×1, +0, −0, ÷1. Included for completeness but rarely surfaced.
-export function isTrivialFact(op, a, b) {
-  if (op === 'mul') return a <= 1 || b <= 1;
-  if (op === 'add') return a === 0 || b === 0;
-  if (op === 'sub') return b === 0 || a === b;
-  if (op === 'div') return b === 1 || a === b;
-  return false;
-}
-
-// Starting level for a fact with no mastery row: trivial → near the top (long rest,
-// low priority); everything else → level 0 (due now).
+// Starting level for a fact with no mastery row: trivial (identity) facts → near the
+// top (long rest, low priority); everything else → level 0 (due now).
 export function initialLevelFor(op, a, b) {
   return isTrivialFact(op, a, b) ? MAX_LEVEL - 1 : 0;
 }

@@ -4,12 +4,12 @@ import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { pickDueQuestion, generateFacts } from '../lib/mathFacts';
-import { mulMaxForGrade, addSubMaxForGrade } from '../lib/mathGrades';
 import { pointsForOp } from '../lib/mathRewards';
+import { OP_KEYS, getType } from '../lib/questionTypes';
 
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
-const EMPTY_SUPPRESSED = { mul: [], add: [], sub: [], div: [] };
-const EMPTY_LEVELS = { mul: {}, add: {}, sub: {}, div: {} };
+const EMPTY_SUPPRESSED = Object.fromEntries(OP_KEYS.map(k => [k, []]));
+const EMPTY_LEVELS = Object.fromEntries(OP_KEYS.map(k => [k, {}]));
 
 // localStorage helpers (namespaced per user so a shared device can't leak data).
 const stateKey = (uid, date) => `math:state:${uid}:${date}`;
@@ -31,8 +31,7 @@ export function useMath() {
   const { user } = useAuth() || {};
   const uid = user?._id ? String(user._id) : 'anon';
   const today = format(new Date(), 'yyyy-MM-dd');
-  const mulMax = mulMaxForGrade(user?.grade);       // grade-based multiplication cap
-  const addSubMax = addSubMaxForGrade(user?.grade); // grade-based add/sub/div cap
+  const grade = user?.grade;
 
   const [loading, setLoading] = useState(true);
   const [suppressedByOp, setSuppressedByOp] = useState(EMPTY_SUPPRESSED);
@@ -51,7 +50,7 @@ export function useMath() {
   const buffer = useRef([]);                    // unflushed answers
   const flushing = useRef(false);
 
-  const maxForOp = useCallback((o) => (o === 'mul' ? mulMax : addSubMax), [mulMax, addSubMax]);
+  const maxForOp = useCallback((o) => getType(o).maxForGrade(grade), [grade]);
 
   // Pick the next due question for the current op, using the freshest scheduling refs.
   const nextQuestion = useCallback(() => {

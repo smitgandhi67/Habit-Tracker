@@ -3,19 +3,16 @@ import { format, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Check, X, Tv, Tent, Trophy, Sparkles, History } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
-import { choicesForAnswer } from '../lib/mathFacts';
+import { choicesForQuestion } from '../lib/mathFacts';
 import { affordableQty, pointsForOp } from '../lib/mathRewards';
+import { TYPES, OP_KEYS } from '../lib/questionTypes';
 import { timerSecondsFor } from '../lib/mathTimer';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
-const OPS = [
-  { key: 'mul', symbol: '×', label: 'Multiply' },
-  { key: 'add', symbol: '+', label: 'Add' },
-  { key: 'sub', symbol: '−', label: 'Subtract' },
-  { key: 'div', symbol: '÷', label: 'Divide' },
-];
-const OP_SYMBOL = { mul: '×', add: '+', sub: '−', div: '÷' };
+// Operation toggle, built from the question-type registry so a new formula appears
+// here automatically (key/symbol/label come from the descriptor).
+const OPS = OP_KEYS.map(k => ({ key: k, symbol: TYPES[k].symbol, label: TYPES[k].label }));
 
 export default function MathPage() {
   const { user } = useAuth();
@@ -29,10 +26,7 @@ export default function MathPage() {
   const [stopped, setStopped] = useState(false);
   const inputRef = useRef(null);
 
-  const choices = useMemo(
-    () => (question ? choicesForAnswer(question.answer, question.a, question.b) : []),
-    [question]
-  );
+  const choices = useMemo(() => choicesForQuestion(question), [question]);
 
   useEffect(() => {
     if (phase === 'input') inputRef.current?.focus();
@@ -128,13 +122,13 @@ export default function MathPage() {
             : `${dueCount} ${dueCount === 1 ? 'fact' : 'facts'} due · ${opLabel} practice`}
         </p>
 
-        {/* Operation toggle */}
-        <div className="mt-3 flex gap-2">
+        {/* Operation toggle — grid so 6+ question types wrap cleanly on mobile. */}
+        <div className="mt-3 grid grid-cols-3 gap-2">
           {OPS.map(o => (
             <button
               key={o.key}
               onClick={() => setOp(o.key)}
-              className={`flex-1 flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold transition-colors ${
+              className={`flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold transition-colors ${
                 op === o.key ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
               }`}
             >
@@ -151,7 +145,7 @@ export default function MathPage() {
             <>
               <div className="text-center">
                 <div className="text-6xl font-extrabold text-slate-800 tracking-tight tabular-nums">
-                  {question.a} {OP_SYMBOL[question.op]} {question.b}
+                  {question.display}
                 </div>
               </div>
 

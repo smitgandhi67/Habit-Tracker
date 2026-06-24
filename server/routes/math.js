@@ -14,7 +14,6 @@ const { requireAdmin } = require('../utils/auth');
 const {
   DEFAULT_REWARDS,
   factKeyFor,
-  isValidOperand,
   balanceOf,
   pointsForOp,
   PROMOTE_AT,
@@ -23,26 +22,15 @@ const {
   dueDateAfter,
   initialLevelFor,
 } = require('../utils/math');
+const { OP_KEYS, validateOperands, isCorrect } = require('../utils/questionTypes');
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const OPS = ['mul', 'add', 'sub', 'div'];
-const ADDSUB_MAX = 100; // server-side sanity bound for add/sub/div operands (client caps tighter by grade)
+const OPS = OP_KEYS; // every registered question type (mul/add/sub/div/sq/sqrt/…)
 
-// Operand validity differs by operation: multiplication uses the 2..20 table universe
-// (mastery keys assume it); add/sub/div allow non-negative integers up to a sane bound.
-// Division additionally requires a non-zero divisor.
-function validOperands(op, a, b) {
-  if (op === 'mul') return isValidOperand(a) && isValidOperand(b);
-  if (op === 'div') return Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 1 && a <= ADDSUB_MAX && b <= ADDSUB_MAX;
-  return Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a <= ADDSUB_MAX && b <= ADDSUB_MAX;
-}
-
-function isCorrectAnswer(op, a, b, answer) {
-  if (op === 'mul') return a * b === answer;
-  if (op === 'add') return a + b === answer;
-  if (op === 'div') return b !== 0 && a % b === 0 && a / b === answer; // exact integer division only
-  return a - b === answer; // sub
-}
+// Validation + grading are owned by the question-type registry (the trust boundary):
+// the server re-grades every answer itself and never trusts a client verdict.
+const validOperands = (op, a, b) => validateOperands(op, a, b);
+const isCorrectAnswer = (op, a, b, answer) => isCorrect(op, a, b, answer);
 
 // ---- Leitner mastery -------------------------------------------------------
 
@@ -91,10 +79,11 @@ async function applyMastery(userId, op, a, b, correct, firstTry, date) {
 // local today; a fact rests while dueDate > today.
 async function scheduleStateFor(userId, date) {
   const rows = await MathFactMastery.find({ userId }).select('op factKey level dueDate').lean();
-  const suppressedByOp = { mul: [], add: [], sub: [], div: [] };
-  const levelsByOp = { mul: {}, add: {}, sub: {}, div: {} };
+  const suppressedByOp = {};
+  const levelsByOp = {};
+  for (const k of OP_KEYS) { suppressedByOp[k] = []; levelsByOp[k] = {}; }
   for (const m of rows) {
-    if (!levelsByOp[m.op]) continue;
+    if (!levelsByOp[m.op]) continue; // ignore rows for a retired/unknown type
     levelsByOp[m.op][m.factKey] = m.level;
     if (m.dueDate && m.dueDate > date) suppressedByOp[m.op].push(m.factKey);
   }
@@ -175,7 +164,7 @@ router.get('/state', async (req, res, next) => {
 router.post('/answer', async (req, res, next) => {
   try {
     const { a, b, answer, firstTry, date, op = 'mul' } = req.body || {};
-    if (!OPS.includes(op)) return res.status(400).json({ error: 'op must be mul, add, sub, or div' });
+    if (!OPS.includes(op)) return res.status(400).json({ error: `op must be one of: ${OPS.join(', ')}` });
     if (!validOperands(op, a, b)) return res.status(400).json({ error: 'invalid operands for operation' });
     if (!Number.isInteger(answer)) return res.status(400).json({ error: 'answer must be an integer' });
     if (!date || !ISO_DATE.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) required' });

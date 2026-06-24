@@ -53,10 +53,12 @@ eq('factKeyFor add commutes', factKeyFor('add', 5, 3), '3+5');
 eq('factKeyFor sub ordered',  factKeyFor('sub', 9, 4), '9-4');
 eq('factKeyFor div ordered',  factKeyFor('div', 12, 3), '12/3');
 
-// dueDateAfter adds INTERVAL_WEEKS[level] weeks (gentle table 0,1,2,3,4,6)
-eq('INTERVAL_WEEKS gentle', INTERVAL_WEEKS.join(','), '0,1,2,3,4,6');
+// dueDateAfter adds INTERVAL_WEEKS[level] weeks; the top of the ladder rests months.
+eq('INTERVAL_WEEKS ladder', INTERVAL_WEEKS.join(','), '0,1,2,3,4,6,12,26');
 eq('dueDateAfter L1', dueDateAfter('2026-06-23', 1), '2026-06-30');
 eq('dueDateAfter L3', dueDateAfter('2026-06-23', 3), '2026-07-14');
+eq('dueDateAfter L6 (~3mo)', dueDateAfter('2026-06-23', 6), '2026-09-15');
+eq('dueDateAfter L7 (~6mo)', dueDateAfter('2026-06-23', 7), '2026-12-22');
 eq('dueDateAfter L0 (due now)', dueDateAfter('2026-06-23', 0), '2026-06-23');
 
 // trivial = identity/zero operand; starts near the top of the box stack
@@ -72,6 +74,40 @@ eq('trivial div n/n', isTrivialFact('div', 4, 4), true);
 eq('non-trivial div', isTrivialFact('div', 6, 3), false);
 eq('initialLevel trivial', initialLevelFor('mul', 1, 9), MAX_LEVEL - 1);
 eq('initialLevel normal',  initialLevelFor('mul', 6, 7), 0);
+
+// ---- question-type registry (squares + square roots) ----
+const { TYPES, OP_KEYS, get, isCorrect, validateOperands, pointsForOp: regPoints } = require('./questionTypes');
+
+eq('registry has 6 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt');
+eq('pointsForOp delegates to registry', regPoints('sqrt'), 4);
+
+// squares: n² with base 0..max
+eq('sq factKey', get('sq').factKey(7), 'sq:7');
+eq('sq answer 7', get('sq').answer(7), 49);
+eq('sq isCorrect', isCorrect('sq', 7, 7, 49), true);
+eq('sq wrong', isCorrect('sq', 7, 7, 48), false);
+eq('sq trivial 1', get('sq').isTrivial(1), true);
+eq('sq trivial 0', get('sq').isTrivial(0), true);
+eq('sq not trivial 5', get('sq').isTrivial(5), false);
+eq('sq generate(10) count', get('sq').generate(10).length, 11); // 0..10
+eq('sq points', get('sq').points, 3);
+
+// square roots: a = radicand n², b = root n, answer = root
+eq('sqrt factKey by radicand', get('sqrt').factKey(144), 'sqrt:144');
+eq('sqrt answer (root)', get('sqrt').answer(144, 12), 12);
+eq('sqrt isCorrect 144→12', isCorrect('sqrt', 144, 12, 12), true);
+eq('sqrt wrong root', isCorrect('sqrt', 144, 12, 11), false);
+eq('sqrt validate perfect square', validateOperands('sqrt', 144, 12), true);
+eq('sqrt validate rejects non-square', validateOperands('sqrt', 145, 12), false);
+eq('sqrt trivial 1', get('sqrt').isTrivial(1, 1), true);
+eq('sqrt generate(10) count', get('sqrt').generate(10).length, 11);
+eq('sqrt points', get('sqrt').points, 4);
+
+// existing ops still grade through the registry
+eq('mul via registry', isCorrect('mul', 6, 7, 42), true);
+eq('div exact only', isCorrect('div', 12, 5, 2), false);
+eq('div valid', validateOperands('div', 12, 3), true);
+eq('div zero divisor invalid', validateOperands('div', 12, 0), false);
 
 console.log(failures === 0 ? '\nAll smoke checks passed.' : `\n${failures} failures.`);
 process.exit(failures === 0 ? 0 : 1);

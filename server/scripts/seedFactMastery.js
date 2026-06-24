@@ -25,21 +25,22 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const MathFactProgress = require('../models/MathFactProgress');
 const MathFactMastery = require('../models/MathFactMastery');
-const {
-  factKeyFor, isoWeekKey, isTrivialFact, initialLevelFor, dueDateAfter,
-} = require('../utils/math');
+const { factKeyFor, isoWeekKey, initialLevelFor, dueDateAfter } = require('../utils/math');
+const { OP_KEYS, get } = require('../utils/questionTypes');
 
-const MUL_CAP = 20;     // full multiplication operand range
-const ADDSUB_CAP = 40;  // full add/sub/div operand range
+// Full operand cap per type for enumerating its universe (the grade caps are tighter
+// on the client; here we seed across the whole range so trivial facts rest everywhere).
+const CAPS = { mul: 20, add: 40, sub: 40, div: 40, sq: 20, sqrt: 20 };
 
-// Enumerate every trivial fact (per op) within the full operand caps.
+// Enumerate every trivial fact across all registered question types, via the registry.
 function trivialFacts() {
   const out = [];
-  const push = (op, a, b) => { if (isTrivialFact(op, a, b)) out.push({ op, a, b }); };
-  for (let a = 0; a <= MUL_CAP; a++) for (let b = a; b <= MUL_CAP; b++) push('mul', a, b);
-  for (let a = 0; a <= ADDSUB_CAP; a++) for (let b = a; a + b <= ADDSUB_CAP; b++) push('add', a, b);
-  for (let a = 0; a <= ADDSUB_CAP; a++) for (let b = 0; b <= a; b++) push('sub', a, b);
-  for (let b = 1; b <= ADDSUB_CAP; b++) for (let q = 1; b * q <= ADDSUB_CAP; q++) push('div', b * q, b);
+  for (const op of OP_KEYS) {
+    const max = CAPS[op] ?? 40;
+    for (const f of get(op).generate(max)) {
+      if (get(op).isTrivial(f.a, f.b)) out.push({ op, a: f.a, b: f.b });
+    }
+  }
   return out;
 }
 
