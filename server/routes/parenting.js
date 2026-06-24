@@ -427,6 +427,26 @@ function renderParentAttempt(md, attempt) {
   else renderAxis(md, attempt);
 }
 
+// One compact line summarizing any attempt — used in the complete data dump.
+function attemptOneLine(a, nameById) {
+  const inst = getInstrument(a.instrumentKey);
+  const title = inst ? inst.title : a.instrumentKey;
+  const interp = a.interpretation || {};
+  let detail;
+  if (interp.styleKey) {
+    const sc = interp.bands?.scales || {};
+    detail = `${interp.styleKey} (Auth ${sc.authoritative ?? '–'} / Authn ${sc.authoritarian ?? '–'} / Perm ${sc.permissive ?? '–'})`;
+  } else if (interp.bands?.factors) {
+    const f = interp.bands.factors;
+    detail = `total ${interp.bands.total ?? '–'} (Lax ${f.laxness} / OR ${f.overreactivity} / Host ${f.hostility})`;
+  } else {
+    detail = (a.dimensions || []).filter(d => AXIS_LABEL[d.key]).map(d => `${AXIS_LABEL[d.key]} ${pct(d.score)}`).join(' · ') || '—';
+  }
+  const rated = String(a.subjectUserId) !== String(a.userId)
+    ? ` · about ${nameById.get(String(a.subjectUserId)) || 'parent'}` : '';
+  return `${title} — ${fmtDate(a.completedAt)} — ${detail}${rated}`;
+}
+
 async function buildReportMarkdown(parentId, includeChildren) {
   const parent = await User.findById(parentId).select('name email').lean();
   const selfAttempts = await ParentingAttempt.find({ userId: parentId, subjectUserId: parentId })
@@ -517,6 +537,25 @@ async function buildReportMarkdown(parentId, includeChildren) {
             }
           }
         }
+      }
+    }
+  }
+
+  // Complete data dump (admin only) — every attempt in the system, so the parent
+  // has truly everything regardless of linking or which login took a quiz.
+  if (includeChildren) {
+    const all = await ParentingAttempt.find({}).sort({ completedAt: -1 }).lean();
+    if (all.length) {
+      const ids = [...new Set(all.flatMap(a => [String(a.userId), String(a.subjectUserId)]))];
+      const users = await User.find({ _id: { $in: ids } }).select('name email').lean();
+      const nameById = new Map(users.map(u => [String(u._id), u.name || u.email]));
+      md.push('---', '');
+      md.push('## All recorded results (complete data dump)', '');
+      md.push('Every quiz attempt in the system, newest first — nothing hidden by linking or which login was used.', '');
+      for (const uid of [...new Set(all.map(a => String(a.userId)))]) {
+        md.push(`### ${nameById.get(uid) || 'Unknown user'}`, '');
+        for (const a of all.filter(x => String(x.userId) === uid)) md.push(`- ${attemptOneLine(a, nameById)}`);
+        md.push('');
       }
     }
   }
