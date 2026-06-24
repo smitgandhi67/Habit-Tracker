@@ -1,8 +1,12 @@
-// Smoke test for src/lib/mathFacts.js. Run with:
-//   node src/lib/mathFacts.smoke.mjs
+// Smoke test for src/lib/mathFacts.js (Leitner / all-ops generation + picking).
+// Run with: node src/lib/mathFacts.smoke.mjs
 // Exits 0 if all assertions pass, 1 otherwise.
 
-import { generateAllFacts, canonicalKey, pickQuestion, answerChoices, choicesForAnswer, pickArithmetic, factCountForMax, TOTAL_FACTS } from './mathFacts.js';
+import {
+  generateAllFacts, generateFacts, factCount, factKeyFor, canonicalKey,
+  pickDueQuestion, answerChoices, choicesForAnswer,
+} from './mathFacts.js';
+import { isTrivialFact } from './mathSchedule.js';
 
 let failures = 0;
 function assert(label, ok, detail) {
@@ -11,100 +15,97 @@ function assert(label, ok, detail) {
 }
 function eq(label, a, b) { assert(label, a === b, `expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
 
-// 190 unique deduped facts
-const facts = generateAllFacts();
-eq('generateAllFacts length', facts.length, 190);
-eq('TOTAL_FACTS', TOTAL_FACTS, 190);
-eq('all keys unique', new Set(facts.map(f => f.key)).size, 190);
-assert('all keys canonical (a<=b)', facts.every(f => f.a <= f.b), 'found a>b');
-eq('canonical commutative', canonicalKey(20, 2), canonicalKey(2, 20));
+const OPS = ['mul', 'add', 'sub', 'div'];
+const ANSWER = { mul: (a, b) => a * b, add: (a, b) => a + b, sub: (a, b) => a - b, div: (a, b) => a / b };
 
-// grade caps shrink the fact set: 2..9 → 8 values → 8*9/2 = 36 facts
-eq('factCountForMax(9) == 36',  factCountForMax(9), 36);
-eq('factCountForMax(12) == 66', factCountForMax(12), 66);
-eq('factCountForMax(20) == 190', factCountForMax(20), 190);
-assert('capped facts never exceed max', generateAllFacts(9).every(f => f.a <= 9 && f.b <= 9), 'found operand > 9');
-// pickQuestion respects the cap
-let capOk = true;
-for (let i = 0; i < 200; i++) {
-  const q = pickQuestion([], null, 9);
-  if (q.a > 9 || q.b > 9) { capOk = false; break; }
+// mul universe now includes 0/1: operands 0..20 → 21*22/2 = 231 deduped facts.
+eq('generateAllFacts(20) incl 0/1', generateAllFacts(20).length, 231);
+eq('generateAllFacts(9)', generateAllFacts(9).length, 55); // 0..9 → 10*11/2
+eq('factCount mul == generateAllFacts', factCount('mul', 20), 231);
+
+// Every op: keys are unique and match factKeyFor; operands satisfy the op's invariant.
+for (const op of OPS) {
+  const facts = generateFacts(op, 20);
+  const keys = new Set(facts.map(f => f.key));
+  assert(`${op}: keys unique`, keys.size === facts.length, `${facts.length - keys.size} dupes`);
+  assert(`${op}: key == factKeyFor`, facts.every(f => f.key === factKeyFor(op, f.a, f.b)), 'key mismatch');
+  let invariantOk = true;
+  for (const f of facts) {
+    if (op === 'add' && f.a + f.b > 20) invariantOk = false;
+    if (op === 'sub' && f.b > f.a) invariantOk = false;
+    if (op === 'div' && (f.b < 1 || f.a % f.b !== 0)) invariantOk = false;
+    if (op === 'mul' && (f.a > f.b)) invariantOk = false;
+  }
+  assert(`${op}: operands satisfy invariant`, invariantOk, 'operand invariant broke');
 }
-assert('pickQuestion respects max cap', capOk, 'returned operand > cap');
 
-// pickQuestion never returns a retired fact
-const retired = new Set(facts.slice(0, 189).map(f => f.key)); // leave exactly 1 live
-let okPool = true;
-for (let i = 0; i < 200; i++) {
-  const q = pickQuestion(retired, null);
-  if (!q || retired.has(q.key)) { okPool = false; break; }
+// 0/1 trivial facts are now present in every universe.
+const has = (op, k) => generateFacts(op, 20).some(f => f.key === k);
+assert('mul has 0x5', has('mul', '0x5'), 'missing');
+assert('mul has 1x9', has('mul', '1x9'), 'missing');
+assert('add has 0+5', has('add', '0+5'), 'missing');
+assert('sub has 7-0', has('sub', '7-0'), 'missing');
+assert('sub has 7-7', has('sub', '7-7'), 'missing');
+assert('div has 5/1', has('div', '5/1'), 'missing');
+assert('div has 4/4', has('div', '4/4'), 'missing');
+
+// factKeyFor round-trips / canonicalization.
+eq('factKeyFor mul commutes', factKeyFor('mul', 8, 7), canonicalKey(8, 7));
+eq('factKeyFor add commutes', factKeyFor('add', 5, 3), '3+5');
+eq('factKeyFor sub ordered', factKeyFor('sub', 9, 4), '9-4');
+eq('factKeyFor div ordered', factKeyFor('div', 12, 3), '12/3');
+
+// pickDueQuestion: never returns a suppressed key; computes the right answer.
+for (const op of OPS) {
+  const all = generateFacts(op, 12).map(f => f.key);
+  const keep = all[Math.floor(all.length / 2)];
+  const suppressed = new Set(all.filter(k => k !== keep)); // leave exactly one due
+  let ok = true;
+  for (let i = 0; i < 100; i++) {
+    const q = pickDueQuestion(op, 12, suppressed, null, {});
+    if (!q || q.key !== keep || q.answer !== ANSWER[op](q.a, q.b)) { ok = false; break; }
+  }
+  assert(`${op}: pickDueQuestion respects suppressed + answer`, ok, 'returned wrong/suppressed key or answer');
+  // fully suppressed → null
+  eq(`${op}: all suppressed → null`, pickDueQuestion(op, 12, new Set(all), null, {}), null);
 }
-assert('pickQuestion avoids retired', okPool, 'returned a retired/empty fact');
 
-// empty pool → null
-eq('pickQuestion empty pool → null', pickQuestion(new Set(facts.map(f => f.key)), null), null);
-
-// avoids immediate repeat when alternatives exist
-let repeats = 0;
-let last = null;
+// Avoids an immediate repeat when alternatives exist.
+let repeats = 0, last = null;
 for (let i = 0; i < 300; i++) {
-  const q = pickQuestion([], last);
+  const q = pickDueQuestion('mul', 9, [], last, {});
   if (q.key === last) repeats++;
   last = q.key;
 }
-assert('pickQuestion avoids immediate repeat', repeats === 0, `${repeats} repeats`);
+assert('pickDueQuestion avoids immediate repeat', repeats === 0, `${repeats} repeats`);
 
-// product orientation is consistent
-const q = pickQuestion([], null);
-eq('product matches a*b', q.product, q.a * q.b);
-
-// answerChoices: 4 distinct, includes correct
-const choices = answerChoices(7, 8);
-eq('answerChoices length', choices.length, 4);
-eq('answerChoices distinct', new Set(choices).size, 4);
-assert('answerChoices includes correct', choices.includes(56), `got ${JSON.stringify(choices)}`);
-assert('answerChoices all positive', choices.every(c => c > 0), `got ${JSON.stringify(choices)}`);
-// smallest fact still yields 4 distinct positive choices
-const small = answerChoices(2, 2);
-eq('small fact 4 distinct', new Set(small).size, 4);
-assert('small fact all positive', small.every(c => c > 0), `got ${JSON.stringify(small)}`);
-
-// addition: a+b within cap, answer matches, never an immediate repeat
-let addOk = true, addLast = null;
-for (let i = 0; i < 400; i++) {
-  const q = pickArithmetic('add', 20, addLast);
-  if (q.a + q.b > 20 || q.answer !== q.a + q.b || q.op !== 'add' || q.key === addLast) { addOk = false; break; }
-  addLast = q.key;
+// Trivial 0/1 facts are deprioritized: with non-trivial facts due and no level info,
+// the picker (which favors the lowest level, trivial defaulting high) never shows them.
+let trivialShown = 0;
+for (let i = 0; i < 300; i++) {
+  const q = pickDueQuestion('mul', 12, [], null, {});
+  if (isTrivialFact('mul', q.a, q.b)) trivialShown++;
 }
-assert('add within cap, answer correct, no repeat', addOk, 'add generation invariant broke');
+assert('trivial facts deprioritized', trivialShown === 0, `${trivialShown} trivial facts shown`);
 
-// subtraction: non-negative result within cap
-let subOk = true;
-for (let i = 0; i < 400; i++) {
-  const q = pickArithmetic('sub', 20, null);
-  if (q.a > 20 || q.b > q.a || q.answer !== q.a - q.b || q.answer < 0 || q.op !== 'sub') { subOk = false; break; }
+// Explicit level weighting: a single level-0 fact wins over everything else.
+const target = '6x7';
+const levels = {};
+for (const f of generateFacts('mul', 9)) levels[f.key] = f.key === target ? 0 : 5;
+let weightOk = true;
+for (let i = 0; i < 50; i++) {
+  if (pickDueQuestion('mul', 9, [], null, levels).key !== target) { weightOk = false; break; }
 }
-assert('sub non-negative within cap, answer correct', subOk, 'sub generation invariant broke');
+assert('lowest level is picked first', weightOk, 'did not always pick the level-0 fact');
 
-// division: exact integer quotient, dividend within cap, divisor >= 2, no immediate repeat
-for (const max of [20, 40]) {
-  let divOk = true, divLast = null;
-  for (let i = 0; i < 400; i++) {
-    const q = pickArithmetic('div', max, divLast);
-    if (q.op !== 'div' || q.b < 2 || q.a > max || q.a % q.b !== 0 || q.answer !== q.a / q.b || q.answer < 2 || q.key === divLast) {
-      divOk = false; break;
-    }
-    divLast = q.key;
-  }
-  assert(`div exact within cap ${max}, no repeat`, divOk, 'div generation invariant broke');
-}
-
-// generic choices include the correct value and are distinct
+// choicesForAnswer: 4 distinct, includes correct, non-negative.
 const gc = choicesForAnswer(17, 8, 9);
 eq('choicesForAnswer length 4', gc.length, 4);
 eq('choicesForAnswer distinct', new Set(gc).size, 4);
 assert('choicesForAnswer includes correct', gc.includes(17), JSON.stringify(gc));
 assert('choicesForAnswer non-negative', gc.every(c => c >= 0), JSON.stringify(gc));
+const ac = answerChoices(7, 8);
+assert('answerChoices includes 56', ac.includes(56), JSON.stringify(ac));
 
 console.log(failures === 0 ? '\nAll smoke checks passed.' : `\n${failures} failures.`);
 process.exit(failures === 0 ? 0 : 1);

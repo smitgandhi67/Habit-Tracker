@@ -1,88 +1,126 @@
-// Multiplication fact generation + question picking for the practice page.
-// Facts are commutative-deduped: 7×8 and 8×7 are the same fact (canonical key "7x8").
+// Fact generation + question picking for the practice page, across all four ops.
+// Facts are op-local canonical: commutative ops (mul/add) dedupe orientation
+// (7×8 == 8×7 → "7x8"); ordered ops (sub/div) keep operand order. Operands now
+// include 0 and 1 (trivial facts) — see isTrivialFact in mathSchedule.js.
+
+import { initialLevelFor } from './mathSchedule.js';
 
 export const MIN_OPERAND = 2;
 export const MAX_OPERAND = 20;
 
-// Canonical key, min first — matches the server's utils/math.canonicalKey.
+// Canonical multiplication key, min first — matches server utils/math.canonicalKey.
 export function canonicalKey(a, b) {
   return `${Math.min(a, b)}x${Math.max(a, b)}`;
 }
 
-// All unique facts as { a, b, key } with a <= b, both operands in [2, max].
-// max defaults to the full range (20) → 190 facts; a grade cap shrinks the set.
-export function generateAllFacts(max = MAX_OPERAND) {
+// Per-operation canonical fact key. Mirrors server utils/math.factKeyFor.
+export function factKeyFor(op, a, b) {
+  if (op === 'add') return `${Math.min(a, b)}+${Math.max(a, b)}`;
+  if (op === 'sub') return `${a}-${b}`;
+  if (op === 'div') return `${a}/${b}`;
+  return canonicalKey(a, b); // mul
+}
+
+// ---- finite fact universes (grade-capped via `max`) -----------------------
+// Each returns canonical facts { a, b, key } (a<=b for commutative ops). Operands
+// include 0/1 so the trivial facts exist in the pool (deprioritized, not shown often).
+
+function genMul(max) {
   const cap = Math.min(max, MAX_OPERAND);
   const facts = [];
-  for (let a = MIN_OPERAND; a <= cap; a++) {
-    for (let b = a; b <= cap; b++) {
-      facts.push({ a, b, key: canonicalKey(a, b) });
+  for (let a = 0; a <= cap; a++) {
+    for (let b = a; b <= cap; b++) facts.push({ a, b, key: canonicalKey(a, b) });
+  }
+  return facts;
+}
+
+function genAdd(max) {
+  const facts = [];
+  for (let a = 0; a <= max; a++) {
+    for (let b = a; a + b <= max; b++) facts.push({ a, b, key: factKeyFor('add', a, b) });
+  }
+  return facts;
+}
+
+function genSub(max) {
+  const facts = [];
+  for (let a = 0; a <= max; a++) {
+    for (let b = 0; b <= a; b++) facts.push({ a, b, key: factKeyFor('sub', a, b) });
+  }
+  return facts;
+}
+
+function genDiv(max) {
+  const facts = [];
+  for (let b = 1; b <= max; b++) {
+    for (let q = 1; b * q <= max; q++) {
+      const a = b * q;
+      facts.push({ a, b, key: factKeyFor('div', a, b) });
     }
   }
   return facts;
 }
 
-const ALL_FACTS = generateAllFacts();
-
-// Number of unique facts available at a given operand cap (for "facts left" display).
-export function factCountForMax(max = MAX_OPERAND) {
-  return generateAllFacts(max).length;
+// Dispatcher: all canonical facts for an op within `max`.
+export function generateFacts(op, max) {
+  if (op === 'add') return genAdd(max);
+  if (op === 'sub') return genSub(max);
+  if (op === 'div') return genDiv(max);
+  return genMul(max);
 }
 
-// Pick the next question from the live pool (facts within `max`, minus retired keys),
-// in a random orientation, avoiding an immediate repeat of `lastKey`.
-// Returns { a, b, key, product } or null when the pool is empty.
-export function pickQuestion(retiredKeys = [], lastKey = null, max = MAX_OPERAND) {
-  const retired = retiredKeys instanceof Set ? retiredKeys : new Set(retiredKeys);
-  let pool = generateAllFacts(max).filter(f => !retired.has(f.key));
+export function factCount(op, max) {
+  return generateFacts(op, max).length;
+}
+
+// Back-compat (mul) helpers kept for callers/tests.
+export function generateAllFacts(max = MAX_OPERAND) {
+  return genMul(Math.min(max, MAX_OPERAND));
+}
+export function factCountForMax(max = MAX_OPERAND) {
+  return genMul(Math.min(max, MAX_OPERAND)).length;
+}
+
+// ---- question rendering + due-based selection -----------------------------
+
+const ANSWER = {
+  mul: (a, b) => a * b,
+  add: (a, b) => a + b,
+  sub: (a, b) => a - b,
+  div: (a, b) => a / b,
+};
+
+// Turn a canonical fact into a displayed question. Commutative ops get a random
+// orientation; ordered ops (sub/div) keep operand order.
+function renderFact(op, f) {
+  let { a, b } = f;
+  if ((op === 'mul' || op === 'add') && a !== b && Math.random() < 0.5) {
+    [a, b] = [b, a];
+  }
+  const answer = ANSWER[op](a, b);
+  const q = { a, b, key: f.key, op, answer };
+  if (op === 'mul') q.product = answer;
+  return q;
+}
+
+// Pick the next question for `op`: from the universe, drop suppressed (resting)
+// facts and an immediate `lastKey` repeat, then favor the lowest mastery level so
+// new/weak facts come before mature ones (trivial 0/1 facts, seeded high, fall to
+// the back). `levelByKey` maps factKey → level; facts with no row use their
+// trivial-aware initial level. Returns a question or null when nothing is due.
+export function pickDueQuestion(op, max, suppressed = [], lastKey = null, levelByKey = {}) {
+  const sup = suppressed instanceof Set ? suppressed : new Set(suppressed);
+  let pool = generateFacts(op, max).filter(f => !sup.has(f.key));
   if (pool.length === 0) return null;
   if (pool.length > 1 && lastKey) {
     const trimmed = pool.filter(f => f.key !== lastKey);
     if (trimmed.length) pool = trimmed;
   }
-  const fact = pool[Math.floor(Math.random() * pool.length)];
-  // Random orientation so the kid sees both 7×8 and 8×7.
-  const flip = fact.a !== fact.b && Math.random() < 0.5;
-  const a = flip ? fact.b : fact.a;
-  const b = flip ? fact.a : fact.b;
-  return { a, b, key: fact.key, op: 'mul', product: a * b, answer: a * b };
-}
-
-const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
-
-// One add/sub/div instance within `max`. Add caps the sum, sub stays non-negative,
-// div is exact integer division (dividend = divisor × quotient, both ≥ 2, dividend ≤ max).
-function genArithmetic(op, max) {
-  if (op === 'add') {
-    const a = randInt(1, Math.max(1, max - 1));
-    const b = randInt(1, Math.max(1, max - a)); // a + b <= max
-    return { a, b, answer: a + b };
-  }
-  if (op === 'div') {
-    // Cap the divisor so a quotient of ≥ 2 always fits under `max`.
-    const b = randInt(2, Math.max(2, Math.min(12, Math.floor(max / 2))));
-    const q = randInt(2, Math.max(2, Math.floor(max / b)));
-    const a = b * q; // a ÷ b = q, exact
-    return { a, b, answer: q };
-  }
-  // sub — result a - b >= 0
-  const a = randInt(1, max);
-  const b = randInt(0, a);
-  return { a, b, answer: a - b };
-}
-
-// Generate an addition/subtraction/division question within `max`. Returns the unified
-// question shape with op + answer. Avoids an immediate repeat of `lastKey`.
-export function pickArithmetic(op, max = 20, lastKey = null) {
-  for (let tries = 0; tries < 25; tries++) {
-    const { a, b, answer } = genArithmetic(op, max);
-    const key = `${op}:${a}:${b}`;
-    if (key === lastKey) continue;
-    return { a, b, key, op, answer };
-  }
-  // Fallback (extremely unlikely to loop out): accept a repeat.
-  const { a, b, answer } = genArithmetic(op, max);
-  return { a, b, key: `${op}:${a}:${b}`, op, answer };
+  const levelOf = f => (f.key in levelByKey ? levelByKey[f.key] : initialLevelFor(op, f.a, f.b));
+  const minLevel = Math.min(...pool.map(levelOf));
+  const lowest = pool.filter(f => levelOf(f) === minLevel);
+  const fact = lowest[Math.floor(Math.random() * lowest.length)];
+  return renderFact(op, fact);
 }
 
 // Four shuffled answer choices: the correct value + 3 plausible near-miss distractors.
@@ -109,4 +147,4 @@ export function answerChoices(a, b) {
   return choicesForAnswer(a * b, a, b);
 }
 
-export const TOTAL_FACTS = ALL_FACTS.length; // 190
+export const TOTAL_FACTS = genMul(MAX_OPERAND).length;

@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 
 const MathDailyStat = require('../models/MathDailyStat');
-const MathFactProgress = require('../models/MathFactProgress');
+const MathFactMastery = require('../models/MathFactMastery');
 const MathReward = require('../models/MathReward');
 const MathPointAdjustment = require('../models/MathPointAdjustment');
 const MathRewardConfig = require('../models/MathRewardConfig');
@@ -13,15 +13,18 @@ const User = require('../models/User');
 const { requireAdmin } = require('../utils/auth');
 const {
   DEFAULT_REWARDS,
-  canonicalKey,
+  factKeyFor,
   isValidOperand,
-  isoWeekKey,
   balanceOf,
   pointsForOp,
+  PROMOTE_AT,
+  MAX_LEVEL,
+  DEMOTE_STEP,
+  dueDateAfter,
+  initialLevelFor,
 } = require('../utils/math');
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const RETIRE_AT = 2; // first-try-corrects on distinct days needed to retire a fact for the week
 const OPS = ['mul', 'add', 'sub', 'div'];
 const ADDSUB_MAX = 100; // server-side sanity bound for add/sub/div operands (client caps tighter by grade)
 
@@ -39,6 +42,63 @@ function isCorrectAnswer(op, a, b, answer) {
   if (op === 'add') return a + b === answer;
   if (op === 'div') return b !== 0 && a % b === 0 && a / b === answer; // exact integer division only
   return a - b === answer; // sub
+}
+
+// ---- Leitner mastery -------------------------------------------------------
+
+// Apply one graded answer to a fact's spaced-repetition state. First-try-correct on
+// a new day advances the streak; PROMOTE_AT distinct-day corrects bump the level and
+// rest the fact (dueDate pushed out). A first-try miss of a due fact demotes it and
+// resurfaces it now. Non-first-try answers don't move mastery. Idempotent within a
+// day for corrects (lastCorrectDate guard → at most one step per day per fact).
+async function applyMastery(userId, op, a, b, correct, firstTry, date) {
+  if (firstTry !== true) return;
+  const factKey = factKeyFor(op, a, b);
+  const fp = await MathFactMastery.findOneAndUpdate(
+    { userId, op, factKey },
+    { $setOnInsert: { level: initialLevelFor(op, a, b), streakCount: 0, lastCorrectDate: null, dueDate: null, lapses: 0 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  if (correct) {
+    if (fp.lastCorrectDate === date) return; // already counted today
+    fp.streakCount += 1;
+    fp.lastCorrectDate = date;
+    if (fp.streakCount >= PROMOTE_AT) {
+      fp.level = Math.min(MAX_LEVEL, fp.level + 1);
+      fp.dueDate = dueDateAfter(date, fp.level);
+      fp.streakCount = 0;
+      fp.lastCorrectDate = null; // fresh cycle when it next comes due
+    }
+    await fp.save();
+    return;
+  }
+
+  // First-try miss: only demote a fact that was actually due (resting facts are
+  // never shown by the picker, but guard anyway).
+  const isDue = !fp.dueDate || fp.dueDate <= date;
+  if (!isDue) return;
+  fp.level = Math.max(0, fp.level - DEMOTE_STEP);
+  fp.streakCount = 0;
+  fp.lastCorrectDate = null;
+  fp.dueDate = date;
+  fp.lapses += 1;
+  await fp.save();
+}
+
+// Build the client's scheduling view: per-op resting (suppressed) fact keys and a
+// factKey→level map (so the client can prioritize low levels). `date` is the kid's
+// local today; a fact rests while dueDate > today.
+async function scheduleStateFor(userId, date) {
+  const rows = await MathFactMastery.find({ userId }).select('op factKey level dueDate').lean();
+  const suppressedByOp = { mul: [], add: [], sub: [], div: [] };
+  const levelsByOp = { mul: {}, add: {}, sub: {}, div: {} };
+  for (const m of rows) {
+    if (!levelsByOp[m.op]) continue;
+    levelsByOp[m.op][m.factKey] = m.level;
+    if (m.dueDate && m.dueDate > date) suppressedByOp[m.op].push(m.factKey);
+  }
+  return { suppressedByOp, levelsByOp };
 }
 
 // ---- helpers --------------------------------------------------------------
@@ -89,19 +149,18 @@ router.get('/state', async (req, res, next) => {
     const { date } = req.query;
     if (!date || !ISO_DATE.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) required' });
     const userId = req.user._id;
-    const weekKey = isoWeekKey(date);
 
-    const [cfg, reward, daily, retired] = await Promise.all([
+    const [cfg, reward, daily, schedule] = await Promise.all([
       getConfig(),
       getReward(userId),
       MathDailyStat.findOne({ userId, date }).lean(),
-      MathFactProgress.find({ userId, weekKey, retiredAt: { $ne: null } }).distinct('factKey'),
+      scheduleStateFor(userId, date),
     ]);
 
     const summary = rewardSummary(reward);
     res.json({
-      weekKey,
-      retiredFactKeys: retired,
+      suppressedByOp: schedule.suppressedByOp,
+      levelsByOp: schedule.levelsByOp,
       today: { attempted: daily?.attempted || 0, correct: daily?.correct || 0 },
       reward: summary,
       rewards: rewardsWithAffordability(cfg.rewards, summary.balance),
@@ -111,21 +170,20 @@ router.get('/state', async (req, res, next) => {
 });
 
 // POST /api/math/answer — body { a, b, answer, firstTry, date, op? }
-// op is 'mul' (default), 'add', or 'sub'. Server validates correctness itself; never
-// trusts a client-supplied verdict. Weekly mastery applies to multiplication only.
+// op is 'mul' (default), 'add', 'sub', or 'div'. Server validates correctness itself;
+// never trusts a client-supplied verdict. Spaced-repetition mastery applies to all ops.
 router.post('/answer', async (req, res, next) => {
   try {
     const { a, b, answer, firstTry, date, op = 'mul' } = req.body || {};
-    if (!OPS.includes(op)) return res.status(400).json({ error: 'op must be mul, add, or sub' });
+    if (!OPS.includes(op)) return res.status(400).json({ error: 'op must be mul, add, sub, or div' });
     if (!validOperands(op, a, b)) return res.status(400).json({ error: 'invalid operands for operation' });
     if (!Number.isInteger(answer)) return res.status(400).json({ error: 'answer must be an integer' });
     if (!date || !ISO_DATE.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) required' });
 
     const userId = req.user._id;
     const correct = isCorrectAnswer(op, a, b, answer);
-    const earns = correct && firstTry === true; // only first-try-correct earns points (+ mastery for mul)
-    const pts = earns ? pointsForOp(op) : 0;    // weighted by operation (sub = 3, else = 1)
-    const weekKey = isoWeekKey(date);
+    const earns = correct && firstTry === true; // only first-try-correct earns points
+    const pts = earns ? pointsForOp(op) : 0;    // weighted by operation (div=4, sub=3, else=1)
 
     // Daily counters: always attempted++, correct++ when it earns, points by weight.
     await MathDailyStat.findOneAndUpdate(
@@ -134,45 +192,30 @@ router.post('/answer', async (req, res, next) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
+    // Spaced-repetition: advance/demote this fact's mastery (all ops).
+    await applyMastery(userId, op, a, b, correct, firstTry === true, date);
+
     let summary;
-    let retired = false;
     if (earns) {
-      // Points for every first-try-correct (no dedup, no daily cap); subtraction is worth 3.
       const reward = await MathReward.findOneAndUpdate(
         { userId },
         { $inc: { pointsEarned: pts } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       summary = rewardSummary(reward);
-
-      // Weekly mastery — multiplication only, advances once per distinct day.
-      if (op === 'mul') {
-        const factKey = canonicalKey(a, b);
-        const fp = await MathFactProgress.findOneAndUpdate(
-          { userId, weekKey, factKey },
-          { $setOnInsert: { correctCount: 0, lastCorrectDate: null, retiredAt: null } },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-        if (fp.lastCorrectDate !== date && !fp.retiredAt) {
-          fp.correctCount += 1;
-          fp.lastCorrectDate = date;
-          if (fp.correctCount >= RETIRE_AT) fp.retiredAt = new Date();
-          await fp.save();
-        }
-        retired = !!fp.retiredAt;
-      }
     } else {
       summary = rewardSummary(await getReward(userId));
     }
 
-    res.json({ correct, retired, factKey: op === 'mul' ? canonicalKey(a, b) : null, reward: summary });
+    res.json({ correct, factKey: factKeyFor(op, a, b), reward: summary });
   } catch (err) { next(err); }
 });
 
-// POST /api/math/answer/batch — body { answers: [{ a, b, answer, firstTry, date }] }
+// POST /api/math/answer/batch — body { answers: [{ a, b, answer, firstTry, date, op? }] }
 // Same grading as /answer but for a buffered batch (one Lambda call for N answers).
 // Server still re-grades each (never trusts the client). Returns the authoritative
-// wallet + the current week's retired facts so the client can reconcile.
+// wallet + the current scheduling state (suppressed facts + levels) so the client
+// can reconcile its pool.
 const MAX_BATCH = 200;
 router.post('/answer/batch', async (req, res, next) => {
   try {
@@ -199,17 +242,19 @@ router.post('/answer/batch', async (req, res, next) => {
 
     let pointsInc = 0;
     for (const [date, items] of byDate) {
-      const weekKey = isoWeekKey(date);
       let attempted = 0, correct = 0, points = 0;
-      const earnedFacts = new Set(); // distinct multiplication facts earned → 1 mastery step each
       for (const it of items) {
         const op = it.op || 'mul';
         attempted += 1;
-        if (isCorrectAnswer(op, it.a, it.b, it.answer) && it.firstTry === true) {
+        const isCorrect = isCorrectAnswer(op, it.a, it.b, it.answer);
+        if (isCorrect && it.firstTry === true) {
           correct += 1;
-          points += pointsForOp(op); // weighted (sub = 3, else = 1)
-          if (op === 'mul') earnedFacts.add(canonicalKey(it.a, it.b));
+          points += pointsForOp(op); // weighted (div=4, sub=3, else=1)
         }
+        // Spaced-repetition: advance on first-try-correct (distinct-day guarded inside),
+        // demote on a first-try miss of a due fact. Sequential so the per-fact
+        // read-modify-write sees prior updates within this batch.
+        await applyMastery(userId, op, it.a, it.b, isCorrect, it.firstTry === true, date);
       }
       pointsInc += points;
 
@@ -218,37 +263,23 @@ router.post('/answer/batch', async (req, res, next) => {
         { $inc: { attempted, correct, points } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
-
-      for (const factKey of earnedFacts) {
-        const fp = await MathFactProgress.findOneAndUpdate(
-          { userId, weekKey, factKey },
-          { $setOnInsert: { correctCount: 0, lastCorrectDate: null, retiredAt: null } },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-        if (fp.lastCorrectDate !== date && !fp.retiredAt) {
-          fp.correctCount += 1;
-          fp.lastCorrectDate = date;
-          if (fp.correctCount >= RETIRE_AT) fp.retiredAt = new Date();
-          await fp.save();
-        }
-      }
     }
 
     const reward = pointsInc > 0
       ? await MathReward.findOneAndUpdate({ userId }, { $inc: { pointsEarned: pointsInc } }, { upsert: true, new: true, setDefaultsOnInsert: true })
       : await getReward(userId);
 
-    // Reconcile pool + today's counters against the most recent date in the batch.
+    // Reconcile scheduling state + today's counters against the most recent batch date.
     const latestDate = answers.map(a => a.date).sort().at(-1);
-    const weekKey = isoWeekKey(latestDate);
-    const [retiredFactKeys, daily] = await Promise.all([
-      MathFactProgress.find({ userId, weekKey, retiredAt: { $ne: null } }).distinct('factKey'),
+    const [schedule, daily] = await Promise.all([
+      scheduleStateFor(userId, latestDate),
       MathDailyStat.findOne({ userId, date: latestDate }).lean(),
     ]);
 
     res.json({
       reward: rewardSummary(reward),
-      retiredFactKeys,
+      suppressedByOp: schedule.suppressedByOp,
+      levelsByOp: schedule.levelsByOp,
       today: { attempted: daily?.attempted || 0, correct: daily?.correct || 0 },
     });
   } catch (err) { next(err); }

@@ -21,7 +21,7 @@ export default function MathPage() {
   const { user } = useAuth();
   const {
     loading, question, session, reward, rewards, sleepoverPct,
-    retiredCount, totalFacts, op, setOp, submitAnswer, advance, redeem, flush,
+    dueCount, caughtUp, op, setOp, submitAnswer, advance, redeem, flush,
   } = useMath();
 
   const [typed, setTyped] = useState('');
@@ -58,7 +58,7 @@ export default function MathPage() {
   const tv = rewards.find(r => r.key === 'tv');
   const sleepover = rewards.find(r => r.key === 'sleepover');
   const tvMinutes = tv ? affordableQty(reward.balance, tv) : 0;
-  const poolLeft = totalFacts - retiredCount;
+  const opLabel = OPS.find(o => o.key === op)?.label || 'Math';
 
   function grade(value) {
     if (phase !== 'input' || value === '' || !question) return;
@@ -123,9 +123,9 @@ export default function MathPage() {
           </Link>
         </div>
         <p className="text-slate-400 text-sm mt-1">
-          {op === 'mul'
-            ? (poolLeft > 0 ? `${poolLeft} facts left to master this week` : 'All facts mastered this week! 🎉')
-            : `${OPS.find(o => o.key === op)?.label} practice — keep earning points!`}
+          {caughtUp
+            ? `${opLabel}: all caught up! New facts coming soon 🎉`
+            : `${dueCount} ${dueCount === 1 ? 'fact' : 'facts'} due · ${opLabel} practice`}
         </p>
 
         {/* Operation toggle */}
@@ -223,8 +223,8 @@ export default function MathPage() {
           ) : (
             <div className="text-center py-8">
               <Trophy className="mx-auto text-amber-400 mb-2" size={40} />
-              <p className="font-bold text-slate-700">Every fact mastered this week!</p>
-              <p className="text-slate-400 text-sm">Come back next week for a fresh round.</p>
+              <p className="font-bold text-slate-700">All caught up on {opLabel.toLowerCase()}!</p>
+              <p className="text-slate-400 text-sm">These facts are resting. Try another operation, or check back soon for a review.</p>
             </div>
           )}
 
