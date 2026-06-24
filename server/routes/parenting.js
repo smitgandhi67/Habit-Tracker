@@ -384,38 +384,92 @@ function renderScale(md, attempt) {
   md.push('');
 }
 
+const AXIS_LABEL = {
+  warmth: 'Warmth', consistency: 'Consistency', responsiveness: 'Responsiveness', demandingness: 'Demandingness',
+  behavioral_control: 'Structure & limits', autonomy_support: 'Autonomy support',
+  psychological_control: 'Guilt / shame pressure', conditional_regard: 'Love-with-conditions',
+  felt_pressure: 'Feeling pressured',
+};
+const AXIS_ADAPTIVE = {
+  warmth: 'high', consistency: 'high', behavioral_control: 'context', autonomy_support: 'high',
+  psychological_control: 'low', conditional_regard: 'low', felt_pressure: 'low',
+};
+
+// Generic axis-based instrument (e.g. Strictness & Pressure).
+function renderAxis(md, attempt) {
+  const inst = getInstrument(attempt.instrumentKey);
+  const b = attempt.interpretation?.bands || {};
+  md.push(`### ${inst ? inst.title : attempt.instrumentKey} (taken ${fmtDate(attempt.completedAt)})`);
+  md.push('');
+  if (b.summary) { md.push(`_${b.summary}_`); md.push(''); }
+  md.push('| Area | Score | Healthy direction | Read |');
+  md.push('|---|---|---|---|');
+  for (const d of attempt.dimensions || []) {
+    const label = AXIS_LABEL[d.key]; if (!label) continue;
+    const adaptive = AXIS_ADAPTIVE[d.key] || 'context';
+    const concern = adaptive === 'low' ? d.score >= 0.5 : adaptive === 'high' ? d.score < 0.5 : false;
+    const dir = adaptive === 'low' ? 'lower is better' : adaptive === 'high' ? 'higher is better' : 'high is fine';
+    md.push(`| ${label} | ${pct(d.score)} | ${dir} | ${concern ? '⚠ watch' : 'ok'} |`);
+  }
+  md.push('');
+}
+
+// Pick the latest attempt per instrument key from a newest-first list.
+function latestPerInstrument(attempts) {
+  const m = new Map();
+  for (const a of attempts) if (!m.has(a.instrumentKey)) m.set(a.instrumentKey, a);
+  return m;
+}
+
+function renderParentAttempt(md, attempt) {
+  if (attempt.interpretation?.styleKey) renderStyle(md, attempt);
+  else if (attempt.interpretation?.bands?.factors) renderScale(md, attempt);
+  else renderAxis(md, attempt);
+}
+
 async function buildReportMarkdown(parentId, includeChildren) {
   const parent = await User.findById(parentId).select('name email').lean();
-  const [style, scale] = await Promise.all([
-    ParentingAttempt.findOne({ userId: parentId, subjectUserId: parentId, instrumentKey: 'style' }).sort({ completedAt: -1 }).lean(),
-    ParentingAttempt.findOne({ userId: parentId, subjectUserId: parentId, instrumentKey: 'scale' }).sort({ completedAt: -1 }).lean(),
-  ]);
+  const selfAttempts = await ParentingAttempt.find({ userId: parentId, subjectUserId: parentId })
+    .sort({ completedAt: -1 }).lean();
+  const latestSelf = latestPerInstrument(selfAttempts);
 
   const md = [];
   md.push('# Parenting Assessment Report');
   md.push('');
   md.push(`_Generated ${fmtDate(new Date())} • HabitTracker Parenting module_`);
   md.push('');
-  md.push('Validated questionnaire results for one family. Instruments: **PSDQ** (parenting style; Robinson et al. 1995/2001), **Parenting Scale** (discipline; Arnold et al. 1993, revised scoring Rhoades & O\'Leary 2007), **APQ-C** (child report; Frick 1991; Shelton et al. 1996). These are this family\'s own self-/child-reports — a reflection tool, **not a clinical diagnosis**.');
+  md.push('Validated questionnaire results for one family. Instruments: **PSDQ** (style; Robinson et al. 1995/2001), **Parenting Scale** (discipline; Arnold et al. 1993 / Rhoades & O\'Leary 2007), **APQ-C** (child report; Frick 1991; Shelton et al. 1996), and behavioral-vs-psychological control + autonomy support + conditional regard (Barber 1996; Self-Determination Theory; Assor et al. 2004). This family\'s own self-/child-reports — a reflection tool, **not a clinical diagnosis**.');
   md.push('');
   md.push('---');
   md.push('');
   md.push(`## Parent: ${parent?.name || 'Unknown'}`);
   md.push('');
-  if (style) renderStyle(md, style); else md.push('_Parenting Style quiz not taken yet._\n');
-  if (scale) renderScale(md, scale); else md.push('_Parenting Scale (discipline) quiz not taken yet._\n');
+
+  // Render each parent quiz taken, latest first by a sensible order.
+  const parentOrder = ['style', 'scale', 'pressure'];
+  const parentKeys = [...new Set([...parentOrder.filter(k => latestSelf.has(k)), ...latestSelf.keys()])];
+  if (parentKeys.length === 0) md.push('_No parent quizzes taken yet._\n');
+  for (const k of parentKeys) renderParentAttempt(md, latestSelf.get(k));
 
   const suggestions = [];
-  if (style) {
-    const facet = Object.fromEntries((style.subscales || []).map(s => [s.key, s.mean]));
-    if ((facet.verbal_hostility ?? 0) >= 2.5) suggestions.push('Calm-voice follow-through: one warning, then the same calm consequence — no repeating or raising your voice. (Verbal-hostility facet is elevated.)');
-    if ((facet.indulgent ?? 0) >= 3) suggestions.push('Hold one limit a day all the way through, even when it causes a fuss. (Indulgent facet is elevated.)');
+  const styleA = latestSelf.get('style');
+  if (styleA) {
+    const facet = Object.fromEntries((styleA.subscales || []).map(s => [s.key, s.mean]));
+    if ((facet.verbal_hostility ?? 0) >= 2.5) suggestions.push('Calm-voice follow-through: one warning, then the same calm consequence — no repeating or raising your voice.');
+    if ((facet.indulgent ?? 0) >= 3) suggestions.push('Hold one limit a day all the way through, even when it causes a fuss.');
   }
-  if (scale) {
-    const flag = scale.interpretation?.bands?.flags || {};
-    if (flag.overreactivity) suggestions.push('Pause-before-reacting: a 3-breath gap before responding to misbehavior. (Over-reactivity is elevated.)');
-    if (flag.hostility) suggestions.push('Replace harsh/loud responses with a brief, firm consequence; step away if anger spikes. (Hostility is elevated.)');
-    if (flag.laxness) suggestions.push('Do-what-I-said: carry out every stated consequence. (Laxness is elevated.)');
+  const scaleA = latestSelf.get('scale');
+  if (scaleA) {
+    const flag = scaleA.interpretation?.bands?.flags || {};
+    if (flag.overreactivity) suggestions.push('Pause-before-reacting: a 3-breath gap before responding to misbehavior.');
+    if (flag.hostility) suggestions.push('Replace harsh/loud responses with a brief, firm consequence; step away if anger spikes.');
+    if (flag.laxness) suggestions.push('Do-what-I-said: carry out every stated consequence.');
+  }
+  const pressureA = latestSelf.get('pressure');
+  if (pressureA) {
+    for (const c of pressureA.interpretation?.bands?.concerns || []) {
+      suggestions.push(`Pressure check — ${c}: keep high standards, but deliver them with reasons, a real choice, and warmth that never depends on results.`);
+    }
   }
 
   if (includeChildren) {
@@ -427,14 +481,22 @@ async function buildReportMarkdown(parentId, includeChildren) {
       md.push('');
       for (const link of links) {
         const child = await User.findById(link.childUserId).select('name').lean();
-        const cv = await ParentingAttempt.findOne({ userId: link.childUserId, subjectUserId: parentId, instrumentKey: 'child_view' }).sort({ completedAt: -1 }).lean();
         const name = child?.name || link.label || 'Child';
-        md.push(`### ${name} — "How I See My Parent" (APQ-C${cv ? `, taken ${fmtDate(cv.completedAt)}` : ''})`);
+        md.push(`### ${name}`);
         md.push('');
-        if (cv) {
-          const dims = Object.fromEntries((cv.dimensions || []).map(d => [d.key, d.score]));
-          md.push(`How this child experiences your parenting: **Warmth ${pct(dims.warmth ?? 0)}**, **Consistency ${pct(dims.consistency ?? 0)}**.`);
+        const childAttempts = await ParentingAttempt.find({ userId: link.childUserId, subjectUserId: parentId })
+          .sort({ completedAt: -1 }).lean();
+        const latestChild = latestPerInstrument(childAttempts.filter(a => getInstrument(a.instrumentKey)?.audience === 'child'));
+        if (latestChild.size === 0) {
+          md.push('_No quizzes recorded under this child’s login yet. (Make sure they signed in as themselves.)_');
           md.push('');
+        } else {
+          for (const [k, a] of latestChild) {
+            const inst = getInstrument(k);
+            const parts = (a.dimensions || []).filter(d => AXIS_LABEL[d.key]).map(d => `${AXIS_LABEL[d.key]} ${pct(d.score)}`);
+            md.push(`**${inst.title}** (taken ${fmtDate(a.completedAt)}) — ${parts.join(' · ')}`);
+            md.push('');
+          }
           const gap = await buildGap(parentId, link.childUserId);
           if (gap.gap.length) {
             md.push(`#### Gap — You vs ${name}`);
@@ -442,16 +504,18 @@ async function buildReportMarkdown(parentId, includeChildren) {
             md.push('| Dimension | You | Child | Difference | Alignment |');
             md.push('|---|---|---|---|---|');
             for (const g of gap.gap) {
-              md.push(`| ${g.key.replace(/^\w/, c => c.toUpperCase())} | ${pct(g.parent)} | ${pct(g.child)} | ${(g.delta >= 0 ? '+' : '')}${Math.round(g.delta * 100)}% | ${g.alignment} |`);
+              md.push(`| ${AXIS_LABEL[g.key] || g.key} | ${pct(g.parent)} | ${pct(g.child)} | ${(g.delta >= 0 ? '+' : '')}${Math.round(g.delta * 100)}% | ${g.alignment} |`);
               if (g.alignment !== 'aligned' && g.key === 'consistency' && g.delta > 0) {
-                suggestions.push(`Consistency gap with ${name}: your child experiences rules as less consistent than you do. Same consequence every time closes it.`);
+                suggestions.push(`Consistency gap with ${name}: same consequence every time closes it.`);
               }
             }
             md.push('');
+            const fp = gap.child.dimensions.find(d => d.key === 'felt_pressure');
+            if (fp) {
+              md.push(`Feeling pressured (kid-only signal): **${pct(fp.score)}** — ${fp.score >= 0.5 ? 'leans toward one-way pressure; give a real say in low-stakes choices.' : 'low; mostly asks, then lets it go.'}`);
+              md.push('');
+            }
           }
-        } else {
-          md.push('_This child has not taken the quiz yet._');
-          md.push('');
         }
       }
     }
