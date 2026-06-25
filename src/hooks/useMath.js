@@ -15,6 +15,7 @@ const emptyAnsweredSets = () => Object.fromEntries(OP_KEYS.map(k => [k, new Set(
 // localStorage helpers (namespaced per user so a shared device can't leak data).
 const stateKey = (uid, date) => `math:state:${uid}:${date}`;
 const bufferKey = (uid) => `math:buffer:${uid}`;
+const answeredKey = (uid, date) => `math:answered:${uid}:${date}`; // facts earned today, per day
 function readLS(key) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
 }
@@ -22,6 +23,22 @@ function writeLS(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* quota / private mode */ }
 }
 function clearLS(key) { try { localStorage.removeItem(key); } catch { /* ignore */ } }
+
+// "Earned today" set survives reload (the in-memory ref doesn't), so already-answered
+// facts stay hidden until tomorrow even before the buffer flushes to the server.
+function readAnswered(uid, date) {
+  const raw = readLS(answeredKey(uid, date));
+  const out = emptyAnsweredSets();
+  if (raw && typeof raw === 'object') {
+    for (const k of OP_KEYS) if (Array.isArray(raw[k])) out[k] = new Set(raw[k]);
+  }
+  return out;
+}
+function writeAnswered(uid, date, sets) {
+  const obj = {};
+  for (const k of OP_KEYS) obj[k] = [...(sets[k] || [])];
+  writeLS(answeredKey(uid, date), obj);
+}
 
 // Drives the math practice page. Questions are generated client-side from each
 // operation's fact universe (no API per question), scheduled by Leitner spaced
@@ -70,8 +87,9 @@ export function useMath() {
     setQuestion(q);
   }, [op, maxForOp, suppressedFor]);
 
-  // New day → clear the "earned today" set so facts come back.
-  useEffect(() => { answeredTodayRef.current = emptyAnsweredSets(); }, [today, uid]);
+  // Restore today's "earned" set from storage (empty on a new day → facts come back),
+  // so a reload doesn't re-show facts already answered correctly today.
+  useEffect(() => { answeredTodayRef.current = readAnswered(uid, today); }, [today, uid]);
 
   // Re-pick when the operation or grade cap changes.
   useEffect(() => { nextQuestion(); }, [nextQuestion]);
@@ -174,7 +192,9 @@ export function useMath() {
     setTodayCounts(t => ({ attempted: t.attempted + 1, correct: t.correct + (earns ? 1 : 0) }));
     if (earns) {
       // Hide this fact for the rest of today (one correct credit per fact per day).
+      // Persisted so the suppression survives a reload, not just this session.
       answeredTodayRef.current[question.op]?.add(question.key);
+      writeAnswered(uid, today, answeredTodayRef.current);
       setReward(r => ({ ...r, pointsEarned: r.pointsEarned + pts, balance: r.balance + pts }));
     }
 
