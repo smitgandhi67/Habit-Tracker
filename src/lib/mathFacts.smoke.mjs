@@ -140,6 +140,12 @@ const sqrtCh = choicesForQuestion(sqrtQ);
 eq('sqrt choices length 4', sqrtCh.length, 4);
 assert('sqrt choices include root 12', sqrtCh.includes(12), JSON.stringify(sqrtCh));
 assert('sqrt choices stay small', sqrtCh.every(c => c <= 22), JSON.stringify(sqrtCh));
+// fraction choices: 3-dp (1/6 → 0.167, not 0.17) with exactly one correct option.
+const fracCh = choicesForQuestion({ op: 'frac', a: 6, b: 1, answer: 1 / 6 });
+eq('frac choices length 4', fracCh.length, 4);
+assert('frac choice shows 0.167', fracCh.includes(0.167), JSON.stringify(fracCh));
+eq('frac choices exactly one correct', fracCh.filter(c => gradeAnswer('frac', 6, 1, c)).length, 1);
+
 const gc = choicesForAnswer(17, 8, 9);
 eq('choicesForAnswer distinct', new Set(gc).size, 4);
 assert('answerChoices includes 56', answerChoices(7, 8).includes(56), 'missing');

@@ -92,17 +92,18 @@ export function choicesForQuestion(q) {
   return choicesForAnswer(q.answer, q.a, q.b);
 }
 
-// Four decimal options around a unit fraction's value (2-dp; the rounded true value
-// is within the grading tolerance, so picking it counts correct).
+// Four decimal options around a unit fraction's value. Rounded to 3 dp so the correct
+// option reads like what the typed flow teaches (1/6 → 0.167, not 0.17) and stays well
+// within the grading tolerance; distractors are ≥0.05 away so only one is correct.
 function fractionChoices(q) {
   if (q.a === 1) return choicesForAnswer(1, 1, 1); // 1/1 = 1 (whole)
-  const r2 = x => Math.round(x * 100) / 100;
+  const r3 = x => Math.round(x * 1000) / 1000;
   const v = q.answer;
-  const set = new Set([r2(v)]);
-  const cands = [r2(v + 0.1), r2(v - 0.05), r2(v + 0.05), r2(v - 0.1), r2(v * 2), r2(v / 2)];
+  const set = new Set([r3(v)]);
+  const cands = [r3(v + 0.1), r3(v - 0.05), r3(v + 0.05), r3(v - 0.1), r3(v * 2), r3(v / 2)];
   for (const c of cands) { if (set.size >= 4) break; if (c > 0 && c < 1) set.add(c); }
   let pad = 0.05;
-  while (set.size < 4) { const c = r2(v + pad); if (c > 0 && c < 1) set.add(c); pad += 0.05; }
+  while (set.size < 4) { const c = r3(v + pad); if (c > 0 && c < 1) set.add(c); pad += 0.05; }
   const arr = [...set].slice(0, 4);
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
