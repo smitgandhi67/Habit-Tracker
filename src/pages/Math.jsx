@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { format, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
-import { Check, X, Tv, Tent, Trophy, Sparkles, History } from 'lucide-react';
+import { Check, X, Tv, Tent, Trophy, Sparkles, History, Clock } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
 import { choicesForQuestion } from '../lib/mathFacts';
 import { affordableQty, pointsForOp } from '../lib/mathRewards';
@@ -24,26 +24,38 @@ export default function MathPage() {
   const [typed, setTyped] = useState('');
   const [phase, setPhase] = useState('input'); // 'input' | 'wrong' | 'right'
   const [stopped, setStopped] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(null);
   const inputRef = useRef(null);
 
   const choices = useMemo(() => choicesForQuestion(question), [question]);
+  const timerTotal = timerSecondsFor(user?.email);
 
   useEffect(() => {
     if (phase === 'input') inputRef.current?.focus();
   }, [phase, question]);
 
-  // Hidden per-question countdown. If it expires while still awaiting a typed
-  // answer, the question counts as incorrect and the choice hint is shown.
+  // Visible per-question countdown. Ticks every 200ms toward a fixed deadline; when it
+  // hits zero the question counts as incorrect and the choice hint is shown.
   useEffect(() => {
-    if (phase !== 'input' || !question || stopped) return;
-    const ms = timerSecondsFor(user?.email) * 1000;
-    const id = setTimeout(() => {
-      submitAnswer(-1, true); // sentinel: never equals a product → logged as incorrect
-      setPhase('wrong');
-      inputRef.current?.blur(); // surface the choice buttons
-    }, ms);
-    return () => clearTimeout(id);
-  }, [phase, question, stopped, user, submitAnswer]);
+    if (phase !== 'input' || !question || stopped) { setSecondsLeft(null); return; }
+    const totalMs = timerTotal * 1000;
+    const deadline = Date.now() + totalMs;
+    setSecondsLeft(timerTotal);
+    let id;
+    const tick = () => {
+      const remMs = deadline - Date.now();
+      if (remMs <= 0) {
+        clearInterval(id); // stop before the state change re-runs the effect (no double-submit)
+        submitAnswer(-1, true); // sentinel: never equals an answer → logged as incorrect
+        setPhase('wrong');
+        inputRef.current?.blur(); // surface the choice buttons
+        return;
+      }
+      setSecondsLeft(Math.ceil(remMs / 1000));
+    };
+    id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [phase, question, stopped, timerTotal, submitAnswer]);
 
   if (loading) {
     return <div className="p-4 pt-10 text-center text-slate-400">Loading…</div>;
@@ -153,6 +165,21 @@ export default function MathPage() {
                   {question.display}
                 </div>
               </div>
+
+              {/* Visible countdown — seconds left to answer before it auto-marks wrong. */}
+              {phase === 'input' && secondsLeft != null && (
+                <div className="mt-4 flex flex-col items-center gap-1">
+                  <div className={`flex items-center gap-1 text-sm font-bold tabular-nums ${secondsLeft <= 3 ? 'text-red-500' : 'text-slate-400'}`}>
+                    <Clock size={14} /> {secondsLeft}s
+                  </div>
+                  <div className="w-40 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-200 ease-linear ${secondsLeft <= 3 ? 'bg-red-400' : 'bg-violet-400'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, (secondsLeft / timerTotal) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* The input stays mounted in every phase and is never `disabled` (that
                   blurs and drops the mobile keyboard). It is only `readOnly` in the wrong
