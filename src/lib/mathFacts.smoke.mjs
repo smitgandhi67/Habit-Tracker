@@ -6,7 +6,7 @@ import {
   generateAllFacts, generateFacts, factCount, factKeyFor, canonicalKey,
   pickDueQuestion, answerChoices, choicesForAnswer, choicesForQuestion,
 } from './mathFacts.js';
-import { TYPES, OP_KEYS } from './questionTypes.js';
+import { TYPES, OP_KEYS, parseTypedAnswer, gradeAnswer } from './questionTypes.js';
 import { isTrivialFact } from './mathSchedule.js';
 
 let failures = 0;
@@ -17,7 +17,7 @@ function assert(label, ok, detail) {
 function eq(label, a, b) { assert(label, a === b, `expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
 
 // registry shape
-eq('registry has 6 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt');
+eq('registry has 9 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac');
 
 // mul universe includes 0/1: operands 0..20 → 231 deduped facts.
 eq('generateAllFacts(20) incl 0/1', generateAllFacts(20).length, 231);
@@ -40,6 +40,9 @@ for (const op of OP_KEYS) {
     if (op === 'div' && (f.b < 1 || f.a % f.b !== 0)) inv = false;
     if (op === 'sq' && f.a !== f.b) inv = false;
     if (op === 'sqrt' && f.b * f.b !== f.a) inv = false;
+    if (op === 'cube' && f.a !== f.b) inv = false;
+    if (op === 'cbrt' && f.b ** 3 !== f.a) inv = false;
+    if (op === 'frac' && (f.a < 1 || f.a > 10 || f.b !== 1)) inv = false;
   }
   assert(`${op}: operand invariant`, inv, 'broke');
 }
@@ -61,6 +64,30 @@ eq('sqrt factKey by radicand', factKeyFor('sqrt', 144, 12), 'sqrt:144');
 eq('sq display', TYPES.sq.display(8), '8²');
 eq('sqrt display', TYPES.sqrt.display(144), '√144');
 assert('sqrt radicands are perfect squares', generateFacts('sqrt', 12).every(f => Math.sqrt(f.a) === f.b), 'non-square radicand');
+
+// cubes + cube roots
+eq('cube generate(12) count', generateFacts('cube', 12).length, 13);
+eq('cbrt generate(12) count', generateFacts('cbrt', 12).length, 13);
+eq('cube display', TYPES.cube.display(5), '5³');
+eq('cbrt display', TYPES.cbrt.display(125), '∛125');
+assert('cbrt radicands are perfect cubes', generateFacts('cbrt', 12).every(f => f.b ** 3 === f.a), 'non-cube radicand');
+
+// fractions: display, prefix, parse + tolerant grading
+eq('frac display', TYPES.frac.display(4), '1/4');
+eq('frac generate caps at 10', generateFacts('frac', 25).length, 10);
+eq('frac prefix for 1/4', TYPES.frac.answerPrefix(4), '0.');
+eq('frac no prefix for 1/1', TYPES.frac.answerPrefix(1), '');
+eq('parse "25" → 0.25', parseTypedAnswer('frac', 4, 1, '25'), 0.25);
+eq('parse "167" → 0.167', parseTypedAnswer('frac', 6, 1, '167'), 0.167);
+eq('parse "1" (1/1) → 1', parseTypedAnswer('frac', 1, 1, '1'), 1);
+assert('grade 0.25 for 1/4', gradeAnswer('frac', 4, 1, parseTypedAnswer('frac', 4, 1, '25')), 'rejected');
+assert('grade 0.33 for 1/3', gradeAnswer('frac', 3, 1, parseTypedAnswer('frac', 3, 1, '33')), 'rejected');
+assert('grade 0.167 for 1/6', gradeAnswer('frac', 6, 1, parseTypedAnswer('frac', 6, 1, '167')), 'rejected');
+assert('reject 0.16 for 1/6 (too coarse)', !gradeAnswer('frac', 6, 1, parseTypedAnswer('frac', 6, 1, '16')), 'wrongly accepted');
+assert('reject 0.3 for 1/3', !gradeAnswer('frac', 3, 1, 0.3), 'wrongly accepted');
+// integer types still graded exactly through the same helpers
+assert('grade mul exact', gradeAnswer('mul', 6, 7, parseTypedAnswer('mul', 6, 7, '42')), 'rejected');
+assert('reject mul 43', !gradeAnswer('mul', 6, 7, 43), 'wrongly accepted');
 
 // factKeyFor round-trips / canonicalization for binary ops.
 eq('factKeyFor mul commutes', factKeyFor('mul', 8, 7), canonicalKey(8, 7));

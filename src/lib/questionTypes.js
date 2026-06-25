@@ -7,10 +7,12 @@
 // Adding a new formula = one descriptor here + its server mirror.
 // KEEP grading rules IN SYNC with server/utils/questionTypes.js.
 
-import { mulMaxForGrade, addSubMaxForGrade, squareMaxForGrade } from './mathGrades.js';
+import { mulMaxForGrade, addSubMaxForGrade, squareMaxForGrade, cubeMaxForGrade } from './mathGrades.js';
 
 const MUL_MAX = 20;
 const SQ_MAX = 50;
+const CUBE_MAX = 20;
+const FRAC_TOL = 0.005;
 const lo = (a, b) => Math.min(a, b);
 const hi = (a, b) => Math.max(a, b);
 
@@ -69,6 +71,48 @@ export const TYPES = {
     isTrivial: (a, b) => b <= 1,
     generate: (max) => { const f = [], c = Math.min(max, SQ_MAX); for (let n = 0; n <= c; n++) f.push({ a: n * n, b: n, key: `sqrt:${n * n}` }); return f; },
   },
+  cube: {
+    key: 'cube', label: 'Cubes', symbol: 'x³', commutative: false, points: 4,
+    display: (a) => `${a}³`,
+    maxForGrade: cubeMaxForGrade,
+    factKey: (a) => `cube:${a}`,
+    answer: (a) => a * a * a,
+    isTrivial: (a) => a <= 1,
+    generate: (max) => { const f = [], c = Math.min(max, CUBE_MAX); for (let n = 0; n <= c; n++) f.push({ a: n, b: n, key: `cube:${n}` }); return f; },
+  },
+  cbrt: {
+    key: 'cbrt', label: 'Cube roots', symbol: '∛', commutative: false, points: 5,
+    display: (a) => `∛${a}`,                   // a = radicand n³; b carries the root
+    maxForGrade: cubeMaxForGrade,
+    factKey: (a) => `cbrt:${a}`,
+    answer: (a, b) => b,
+    isTrivial: (a, b) => b <= 1,
+    generate: (max) => { const f = [], c = Math.min(max, CUBE_MAX); for (let n = 0; n <= c; n++) f.push({ a: n * n * n, b: n, key: `cbrt:${n * n * n}` }); return f; },
+  },
+  frac: {
+    // Unit fractions 1/n as decimals. The kid types the digits after a fixed "0."
+    // prefix (25 → 0.25, 167 → 0.167); graded with tolerance so 2- or 3-dp both pass.
+    key: 'frac', label: 'Fractions', symbol: '½', commutative: false, points: 2,
+    integerAnswer: false, tolerance: FRAC_TOL, autoSubmit: false,
+    display: (a) => `1/${a}`,
+    maxForGrade: () => 10,
+    factKey: (a) => `frac:1/${a}`,
+    answer: (a) => 1 / a,
+    isTrivial: (a) => a === 1,
+    generate: (max) => { const f = [], c = Math.min(max, 10); for (let n = 1; n <= c; n++) f.push({ a: n, b: 1, key: `frac:1/${n}` }); return f; },
+    // UI: show "0." before the input (except 1/1, whose value is the whole number 1).
+    answerPrefix: (a) => (a === 1 ? '' : '0.'),
+    // Turn the kid's keystrokes into a number. Digits after the "0." prefix → 0.ddd;
+    // a typed dot means they entered the whole decimal; '1/1' types the whole number.
+    parseTyped: (raw, a) => {
+      const s = String(raw);
+      if (s.includes('-')) return NaN;
+      if (s.includes('.')) return Number(s);
+      const d = s.replace(/[^\d]/g, '');
+      if (d === '') return NaN;
+      return a === 1 ? Number(d) : Number('0.' + d);
+    },
+  },
 };
 
 export const OP_KEYS = Object.keys(TYPES);
@@ -77,3 +121,19 @@ export function getType(op) { return TYPES[op]; }
 export function pointsForOp(op) { return TYPES[op] ? TYPES[op].points : 1; }
 export function isTrivialFact(op, a, b) { return TYPES[op].isTrivial(a, b); }
 export function factKeyFor(op, a, b) { return TYPES[op].factKey(a, b); }
+
+// Parse a kid's raw keystrokes into a numeric answer for grading (type-aware:
+// fractions reinterpret digits under the "0." prefix; everything else is Number()).
+export function parseTypedAnswer(op, a, b, raw) {
+  const t = TYPES[op];
+  return t && t.parseTyped ? t.parseTyped(raw, a, b) : Number(raw);
+}
+
+// Is `val` a correct answer for this fact? Tolerant types (fractions) accept any
+// value within `tolerance`; everything else must match exactly.
+export function gradeAnswer(op, a, b, val) {
+  const t = TYPES[op];
+  if (!t || Number.isNaN(val)) return false;
+  const correct = t.answer(a, b);
+  return t.tolerance ? Math.abs(val - correct) <= t.tolerance : val === correct;
+}

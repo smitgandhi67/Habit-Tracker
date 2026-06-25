@@ -166,7 +166,7 @@ router.post('/answer', async (req, res, next) => {
     const { a, b, answer, firstTry, date, op = 'mul' } = req.body || {};
     if (!OPS.includes(op)) return res.status(400).json({ error: `op must be one of: ${OPS.join(', ')}` });
     if (!validOperands(op, a, b)) return res.status(400).json({ error: 'invalid operands for operation' });
-    if (!Number.isInteger(answer)) return res.status(400).json({ error: 'answer must be an integer' });
+    if (!Number.isFinite(answer)) return res.status(400).json({ error: 'answer must be a number' }); // non-integer for fractions; isCorrect re-grades
     if (!date || !ISO_DATE.test(date)) return res.status(400).json({ error: 'date (YYYY-MM-DD) required' });
 
     const userId = req.user._id;
@@ -215,8 +215,8 @@ router.post('/answer/batch', async (req, res, next) => {
     if (answers.length > MAX_BATCH) return res.status(400).json({ error: `max ${MAX_BATCH} answers per batch` });
     for (const it of answers) {
       const op = it.op || 'mul';
-      if (!OPS.includes(op) || !validOperands(op, it.a, it.b) || !Number.isInteger(it.answer) || !it.date || !ISO_DATE.test(it.date)) {
-        return res.status(400).json({ error: 'each answer needs valid op, operands, integer answer, and date' });
+      if (!OPS.includes(op) || !validOperands(op, it.a, it.b) || !Number.isFinite(it.answer) || !it.date || !ISO_DATE.test(it.date)) {
+        return res.status(400).json({ error: 'each answer needs valid op, operands, a numeric answer, and date' });
       }
     }
 

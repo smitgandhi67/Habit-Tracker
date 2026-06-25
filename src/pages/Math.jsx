@@ -5,7 +5,7 @@ import { Check, X, Tv, Tent, Trophy, Sparkles, History } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
 import { choicesForQuestion } from '../lib/mathFacts';
 import { affordableQty, pointsForOp } from '../lib/mathRewards';
-import { TYPES, OP_KEYS } from '../lib/questionTypes';
+import { TYPES, OP_KEYS, getType, gradeAnswer } from '../lib/questionTypes';
 import { timerSecondsFor } from '../lib/mathTimer';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -53,6 +53,8 @@ export default function MathPage() {
   const sleepover = rewards.find(r => r.key === 'sleepover');
   const tvMinutes = tv ? affordableQty(reward.balance, tv) : 0;
   const opLabel = OPS.find(o => o.key === op)?.label || 'Math';
+  // Fixed prefix shown before the input for decimal types (e.g. "0." for fractions).
+  const answerPrefix = question ? (getType(question.op).answerPrefix?.(question.a, question.b) || '') : '';
 
   function grade(value) {
     if (phase !== 'input' || value === '' || !question) return;
@@ -85,8 +87,10 @@ export default function MathPage() {
   function handleType(value) {
     setTyped(value);
     if (phase !== 'input' || value === '' || !question) return;
-    // Grade the instant it matches (no need to fill remaining digits), or once the
+    // Types with non-integer answers (fractions) can't auto-submit on digit count —
+    // the kid taps Check. For integer types, grade the instant it matches, or once the
     // entry is at least as long as the answer (a wrong guess of full length).
+    if (getType(question.op).autoSubmit === false) return;
     const answerLen = String(question.answer).length;
     if (Number(value) === question.answer || value.length >= answerLen) {
       grade(value);
@@ -94,9 +98,10 @@ export default function MathPage() {
   }
 
   // In the wrong-answer hint flow, picking the correct choice just lets the kid
-  // move on — it is NOT logged again (one attempt per question).
+  // move on — it is NOT logged again (one attempt per question). Tolerance-aware so
+  // a rounded fraction decimal counts.
   function pickChoice(c) {
-    if (!question || c !== question.answer) return;
+    if (!question || !gradeAnswer(question.op, question.a, question.b, c)) return;
     setTyped(''); setPhase('input'); advance();
     // Refocus inside this tap gesture so the keypad reopens for the next question.
     inputRef.current?.focus();
@@ -156,22 +161,27 @@ export default function MathPage() {
                   turns readOnly, so keeping it editable is what holds the numpad open on
                   iPad through the pause and into the next question. */}
               <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3">
-                <input
-                  ref={inputRef}
-                  type="number"
-                  inputMode="numeric"
-                  value={typed}
-                  readOnly={phase === 'wrong'}
-                  onChange={e => handleType(e.target.value)}
-                  placeholder="?"
-                  className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
-                    phase === 'right'
-                      ? 'border-green-400 bg-green-50 text-green-600'
-                      : phase === 'wrong'
-                        ? 'border-red-300 bg-red-50 text-red-500'
-                        : 'border-slate-200 focus:border-violet-400'
-                  }`}
-                />
+                <div className="flex items-center gap-1">
+                  {answerPrefix && (
+                    <span className="text-4xl font-bold text-slate-400 tabular-nums">{answerPrefix}</span>
+                  )}
+                  <input
+                    ref={inputRef}
+                    type="number"
+                    inputMode={answerPrefix ? 'decimal' : 'numeric'}
+                    value={typed}
+                    readOnly={phase === 'wrong'}
+                    onChange={e => handleType(e.target.value)}
+                    placeholder="?"
+                    className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
+                      phase === 'right'
+                        ? 'border-green-400 bg-green-50 text-green-600'
+                        : phase === 'wrong'
+                          ? 'border-red-300 bg-red-50 text-red-500'
+                          : 'border-slate-200 focus:border-violet-400'
+                    }`}
+                  />
+                </div>
                 {phase === 'input' && (
                   <button
                     type="submit"

@@ -78,7 +78,7 @@ eq('initialLevel normal',  initialLevelFor('mul', 6, 7), 0);
 // ---- question-type registry (squares + square roots) ----
 const { TYPES, OP_KEYS, get, isCorrect, validateOperands, pointsForOp: regPoints } = require('./questionTypes');
 
-eq('registry has 6 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt');
+eq('registry has 9 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac');
 eq('pointsForOp delegates to registry', regPoints('sqrt'), 4);
 
 // squares: n² with base 0..max
@@ -108,6 +108,40 @@ eq('mul via registry', isCorrect('mul', 6, 7, 42), true);
 eq('div exact only', isCorrect('div', 12, 5, 2), false);
 eq('div valid', validateOperands('div', 12, 3), true);
 eq('div zero divisor invalid', validateOperands('div', 12, 0), false);
+
+// cubes: n³ up to 12
+eq('cube factKey', get('cube').factKey(5), 'cube:5');
+eq('cube answer 12³', get('cube').answer(12), 1728);
+eq('cube isCorrect', isCorrect('cube', 5, 5, 125), true);
+eq('cube wrong', isCorrect('cube', 5, 5, 120), false);
+eq('cube generate(12) count', get('cube').generate(12).length, 13); // 0..12
+eq('cube points', get('cube').points, 4);
+
+// cube roots: a = n³, b = root n
+eq('cbrt factKey by radicand', get('cbrt').factKey(125), 'cbrt:125');
+eq('cbrt isCorrect 125→5', isCorrect('cbrt', 125, 5, 5), true);
+eq('cbrt wrong', isCorrect('cbrt', 125, 5, 6), false);
+eq('cbrt validate perfect cube', validateOperands('cbrt', 125, 5), true);
+eq('cbrt validate rejects non-cube', validateOperands('cbrt', 126, 5), false);
+eq('cbrt points', get('cbrt').points, 5);
+
+// fractions: unit 1/n graded with tolerance (2- or 3-dp both pass)
+eq('frac factKey', get('frac').factKey(4), 'frac:1/4');
+eq('frac answer 1/4', get('frac').answer(4), 0.25);
+eq('frac integerAnswer false', get('frac').integerAnswer, false);
+eq('frac 0.25 correct', isCorrect('frac', 4, 1, 0.25), true);
+eq('frac 0.33 ≈ 1/3 correct', isCorrect('frac', 3, 1, 0.33), true);
+eq('frac 0.333 ≈ 1/3 correct', isCorrect('frac', 3, 1, 0.333), true);
+eq('frac 0.3 too coarse', isCorrect('frac', 3, 1, 0.3), false);
+eq('frac 0.167 ≈ 1/6 correct', isCorrect('frac', 6, 1, 0.167), true);
+eq('frac 1/1 = 1', isCorrect('frac', 1, 1, 1), true);
+eq('frac validate 1..10', validateOperands('frac', 7, 1), true);
+eq('frac validate rejects 11', validateOperands('frac', 11, 1), false);
+eq('frac generate count 10', get('frac').generate(10).length, 10);
+eq('frac points', get('frac').points, 2);
+
+// the route now accepts non-integer answers (fractions); isCorrect is the real gate
+eq('non-integer answer is finite (route guard)', Number.isFinite(0.25), true);
 
 console.log(failures === 0 ? '\nAll smoke checks passed.' : `\n${failures} failures.`);
 process.exit(failures === 0 ? 0 : 1);

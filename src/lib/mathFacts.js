@@ -82,12 +82,33 @@ export function choicesForAnswer(correct, a = 1, b = 1) {
   return arr;
 }
 
-// Distractors for a rendered question. Square roots use neighbors of the small root
-// (not the large radicand); everything else nudges by its operands.
+// Distractors for a rendered question. Square/cube roots use neighbors of the small
+// root (not the large radicand); fractions use nearby 2-dp decimals; everything else
+// nudges by its operands.
 export function choicesForQuestion(q) {
   if (!q) return [];
-  if (q.op === 'sqrt') return choicesForAnswer(q.answer, 1, 2);
+  if (q.op === 'sqrt' || q.op === 'cbrt') return choicesForAnswer(q.answer, 1, 2);
+  if (q.op === 'frac') return fractionChoices(q);
   return choicesForAnswer(q.answer, q.a, q.b);
+}
+
+// Four decimal options around a unit fraction's value (2-dp; the rounded true value
+// is within the grading tolerance, so picking it counts correct).
+function fractionChoices(q) {
+  if (q.a === 1) return choicesForAnswer(1, 1, 1); // 1/1 = 1 (whole)
+  const r2 = x => Math.round(x * 100) / 100;
+  const v = q.answer;
+  const set = new Set([r2(v)]);
+  const cands = [r2(v + 0.1), r2(v - 0.05), r2(v + 0.05), r2(v - 0.1), r2(v * 2), r2(v / 2)];
+  for (const c of cands) { if (set.size >= 4) break; if (c > 0 && c < 1) set.add(c); }
+  let pad = 0.05;
+  while (set.size < 4) { const c = r2(v + pad); if (c > 0 && c < 1) set.add(c); pad += 0.05; }
+  const arr = [...set].slice(0, 4);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 // Multiplication choices (kept for callers/tests); delegates to the generic helper.

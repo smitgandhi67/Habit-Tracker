@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { pickDueQuestion, generateFacts } from '../lib/mathFacts';
 import { pointsForOp } from '../lib/mathRewards';
-import { OP_KEYS, getType } from '../lib/questionTypes';
+import { OP_KEYS, getType, parseTypedAnswer, gradeAnswer } from '../lib/questionTypes';
 
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
 const EMPTY_SUPPRESSED = Object.fromEntries(OP_KEYS.map(k => [k, []]));
@@ -143,10 +143,13 @@ export function useMath() {
   // Returns { correct } synchronously; the server re-grades on the next flush.
   const submitAnswer = useCallback((value, firstTry) => {
     if (!question) return { correct: false };
-    const answer = Number(value);
-    const correct = answer === question.answer;
+    // Type-aware: fractions reinterpret keystrokes under the "0." prefix and grade
+    // with tolerance; integer types parse + compare exactly. The numeric value is
+    // what gets buffered, so the server re-grades the same number.
+    const answer = parseTypedAnswer(question.op, question.a, question.b, value);
+    const correct = gradeAnswer(question.op, question.a, question.b, answer);
     const earns = correct && firstTry === true;
-    const pts = earns ? pointsForOp(question.op) : 0; // weighted (div=4, sub=3, else=1)
+    const pts = earns ? pointsForOp(question.op) : 0; // weighted per type
 
     buffer.current.push({ a: question.a, b: question.b, answer, firstTry: !!firstTry, date: today, op: question.op });
     writeLS(bufferKey(uid), buffer.current);

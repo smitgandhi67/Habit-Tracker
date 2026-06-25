@@ -14,6 +14,8 @@
 const MUL_MAX = 20;        // multiplication table bound (operands 0..20)
 const ADDSUB_MAX = 100;    // sanity bound for add/sub/div operands
 const SQ_MAX = 50;         // sanity bound for square base n
+const CUBE_MAX = 20;       // sanity bound for cube base n
+const FRAC_TOL = 0.005;    // unit-fraction grading tolerance (accepts 2- or 3-dp rounding)
 
 const isInt = Number.isInteger;
 const lo = (a, b) => Math.min(a, b);
@@ -73,6 +75,33 @@ const TYPES = {
     validate: (a, b) => isInt(a) && a >= 0 && a <= SQ_MAX * SQ_MAX && isInt(b) && b * b === a,
     isTrivial: (a, b) => b <= 1,
     generate: (max) => { const f = [], c = Math.min(max, SQ_MAX); for (let n = 0; n <= c; n++) f.push({ a: n * n, b: n, key: `sqrt:${n * n}` }); return f; },
+  },
+  cube: {
+    key: 'cube', points: 4, commutative: false,
+    factKey: (a) => `cube:${a}`,               // a = base n
+    answer: (a) => a * a * a,
+    isCorrect: (a, b, ans) => a * a * a === ans,
+    validate: (a) => isInt(a) && a >= 0 && a <= CUBE_MAX,
+    isTrivial: (a) => a <= 1,
+    generate: (max) => { const f = [], c = Math.min(max, CUBE_MAX); for (let n = 0; n <= c; n++) f.push({ a: n, b: n, key: `cube:${n}` }); return f; },
+  },
+  cbrt: {
+    key: 'cbrt', points: 5, commutative: false,
+    factKey: (a) => `cbrt:${a}`,               // a = radicand n³; b carries the root n
+    answer: (a, b) => b,
+    isCorrect: (a, b, ans) => ans >= 0 && ans * ans * ans === a,
+    validate: (a, b) => isInt(a) && a >= 0 && a <= CUBE_MAX ** 3 && isInt(b) && b * b * b === a,
+    isTrivial: (a, b) => b <= 1,
+    generate: (max) => { const f = [], c = Math.min(max, CUBE_MAX); for (let n = 0; n <= c; n++) f.push({ a: n * n * n, b: n, key: `cbrt:${n * n * n}` }); return f; },
+  },
+  frac: {
+    key: 'frac', points: 2, commutative: false, integerAnswer: false,
+    factKey: (a) => `frac:1/${a}`,             // a = denominator n (unit fraction 1/n)
+    answer: (a) => 1 / a,                      // decimal value
+    isCorrect: (a, b, ans) => Math.abs(ans - 1 / a) <= FRAC_TOL, // tolerant of 2/3-dp rounding
+    validate: (a) => isInt(a) && a >= 1 && a <= 10,
+    isTrivial: (a) => a === 1,                 // 1/1 = 1
+    generate: (max) => { const f = [], c = Math.min(max, 10); for (let n = 1; n <= c; n++) f.push({ a: n, b: 1, key: `frac:1/${n}` }); return f; },
   },
 };
 

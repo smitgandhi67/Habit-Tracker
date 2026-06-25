@@ -30,7 +30,7 @@ const { OP_KEYS, get } = require('../utils/questionTypes');
 
 // Full operand cap per type for enumerating its universe (the grade caps are tighter
 // on the client; here we seed across the whole range so trivial facts rest everywhere).
-const CAPS = { mul: 20, add: 40, sub: 40, div: 40, sq: 20, sqrt: 20 };
+const CAPS = { mul: 20, add: 40, sub: 40, div: 40, sq: 25, sqrt: 25, cube: 12, cbrt: 12, frac: 10 };
 
 // Enumerate every trivial fact across all registered question types, via the registry.
 function trivialFacts() {
