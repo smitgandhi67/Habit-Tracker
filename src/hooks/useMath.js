@@ -10,6 +10,7 @@ import { OP_KEYS, getType, parseTypedAnswer, gradeAnswer } from '../lib/question
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
 const EMPTY_SUPPRESSED = Object.fromEntries(OP_KEYS.map(k => [k, []]));
 const EMPTY_LEVELS = Object.fromEntries(OP_KEYS.map(k => [k, {}]));
+const emptyAnsweredSets = () => Object.fromEntries(OP_KEYS.map(k => [k, new Set()]));
 
 // localStorage helpers (namespaced per user so a shared device can't leak data).
 const stateKey = (uid, date) => `math:state:${uid}:${date}`;
@@ -47,19 +48,30 @@ export function useMath() {
   const lastKey = useRef(null);
   const suppressedRef = useRef(suppressedByOp); // freshest resting sets for picking
   const levelsRef = useRef(EMPTY_LEVELS);       // freshest factKey→level maps
+  const answeredTodayRef = useRef(emptyAnsweredSets()); // facts earned today → hide until tomorrow
   const buffer = useRef([]);                    // unflushed answers
   const flushing = useRef(false);
 
   const maxForOp = useCallback((o) => getType(o).maxForGrade(grade), [grade]);
 
+  // Suppressed set for an op = server resting set + facts already earned today this
+  // session (optimistic, so a correct fact vanishes immediately, before the next flush).
+  const suppressedFor = useCallback((o) => {
+    const earned = answeredTodayRef.current[o];
+    const base = suppressedRef.current[o] || [];
+    return earned && earned.size ? [...base, ...earned] : base;
+  }, []);
+
   // Pick the next due question for the current op, using the freshest scheduling refs.
   const nextQuestion = useCallback(() => {
-    const sup = suppressedRef.current[op] || [];
     const lvl = levelsRef.current[op] || {};
-    const q = pickDueQuestion(op, maxForOp(op), sup, lastKey.current, lvl);
+    const q = pickDueQuestion(op, maxForOp(op), suppressedFor(op), lastKey.current, lvl);
     lastKey.current = q?.key ?? null;
     setQuestion(q);
-  }, [op, maxForOp]);
+  }, [op, maxForOp, suppressedFor]);
+
+  // New day → clear the "earned today" set so facts come back.
+  useEffect(() => { answeredTodayRef.current = emptyAnsweredSets(); }, [today, uid]);
 
   // Re-pick when the operation or grade cap changes.
   useEffect(() => { nextQuestion(); }, [nextQuestion]);
@@ -161,6 +173,8 @@ export function useMath() {
     }));
     setTodayCounts(t => ({ attempted: t.attempted + 1, correct: t.correct + (earns ? 1 : 0) }));
     if (earns) {
+      // Hide this fact for the rest of today (one correct credit per fact per day).
+      answeredTodayRef.current[question.op]?.add(question.key);
       setReward(r => ({ ...r, pointsEarned: r.pointsEarned + pts, balance: r.balance + pts }));
     }
 
@@ -189,10 +203,10 @@ export function useMath() {
     }
   }, [flush, today, applyState]);
 
-  // Facts still due for the current op = capped universe minus the resting set.
-  // (Computed by filtering rather than subtracting counts, because the suppressed
-  // set may include keys whose operands exceed this grade's cap.)
-  const dueSet = new Set(suppressedByOp[op] || []);
+  // Facts still due for the current op = capped universe minus the resting set (incl.
+  // facts already earned today). Filtered rather than subtracted, because the suppressed
+  // set may include keys whose operands exceed this grade's cap.
+  const dueSet = new Set(suppressedFor(op));
   const dueCount = generateFacts(op, maxForOp(op)).filter(f => !dueSet.has(f.key)).length;
 
   return {

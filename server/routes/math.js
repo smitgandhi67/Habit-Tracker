@@ -78,14 +78,18 @@ async function applyMastery(userId, op, a, b, correct, firstTry, date) {
 // factKey→level map (so the client can prioritize low levels). `date` is the kid's
 // local today; a fact rests while dueDate > today.
 async function scheduleStateFor(userId, date) {
-  const rows = await MathFactMastery.find({ userId }).select('op factKey level dueDate').lean();
+  const rows = await MathFactMastery.find({ userId }).select('op factKey level dueDate lastCorrectDate').lean();
   const suppressedByOp = {};
   const levelsByOp = {};
   for (const k of OP_KEYS) { suppressedByOp[k] = []; levelsByOp[k] = {}; }
   for (const m of rows) {
     if (!levelsByOp[m.op]) continue; // ignore rows for a retired/unknown type
     levelsByOp[m.op][m.factKey] = m.level;
-    if (m.dueDate && m.dueDate > date) suppressedByOp[m.op].push(m.factKey);
+    // A fact rests if it's not due yet, OR it was already answered correctly today
+    // (one correct credit per fact per day — it returns tomorrow).
+    const resting = m.dueDate && m.dueDate > date;
+    const answeredToday = m.lastCorrectDate === date;
+    if (resting || answeredToday) suppressedByOp[m.op].push(m.factKey);
   }
   return { suppressedByOp, levelsByOp };
 }
