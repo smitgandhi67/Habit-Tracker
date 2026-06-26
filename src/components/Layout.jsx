@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, ShieldCheck, LogOut, Star, HeartHandshake } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/habits',  icon: ListChecks,   label: 'Habits'  },
   { to: '/meals',   icon: Utensils,     label: 'Meals'   },
   { to: '/math',    icon: Calculator,   label: 'Math'    },
+  { to: '/build',   icon: Lightbulb,    label: 'Build'   },
   { to: '/gym',     icon: Dumbbell,     label: 'Gym'     },
   { to: '/sleep',   icon: Moon,         label: 'Sleep'   },
   { to: '/reports', icon: BarChart2,    label: 'Reports' },

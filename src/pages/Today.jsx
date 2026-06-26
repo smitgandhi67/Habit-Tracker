@@ -3,6 +3,7 @@ import { format, addDays, subDays, isToday, startOfDay } from 'date-fns';
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { useHabitsContext } from '../hooks/useHabits';
 import HabitCard from '../components/HabitCard';
+import BuilderTodayCard from '../components/BuilderTodayCard';
 import { HabitListSkeleton } from '../components/Skeleton';
 import { apiFetch } from '../lib/api';
 
@@ -118,6 +119,9 @@ export default function Today() {
           {message && <p className="text-slate-400 text-xs mt-2">{message}</p>}
         </div>
       )}
+
+      {/* Builder quick-action (today only) */}
+      {onToday && <BuilderTodayCard />}
 
       {/* Habit list */}
       {total === 0 ? (
