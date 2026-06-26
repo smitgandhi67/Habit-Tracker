@@ -23,6 +23,7 @@ const {
   initialLevelFor,
 } = require('../utils/math');
 const { OP_KEYS, validateOperands, isCorrect } = require('../utils/questionTypes');
+const { effectivePoints } = require('../utils/mathBonus');
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const OPS = OP_KEYS; // every registered question type (mul/add/sub/div/sq/sqrt/…)
@@ -176,7 +177,8 @@ router.post('/answer', async (req, res, next) => {
     const userId = req.user._id;
     const correct = isCorrectAnswer(op, a, b, answer);
     const earns = correct && firstTry === true; // only first-try-correct earns points
-    const pts = earns ? pointsForOp(op) : 0;    // weighted by operation (div=4, sub=3, else=1)
+    // weighted by operation (div=4, sub=3, else=1); 1-point Qs get the temp per-kid promo
+    const pts = earns ? effectivePoints(pointsForOp(op), req.user) : 0;
 
     // Daily counters: always attempted++, correct++ when it earns, points by weight.
     await MathDailyStat.findOneAndUpdate(
@@ -242,7 +244,7 @@ router.post('/answer/batch', async (req, res, next) => {
         const isCorrect = isCorrectAnswer(op, it.a, it.b, it.answer);
         if (isCorrect && it.firstTry === true) {
           correct += 1;
-          points += pointsForOp(op); // weighted (div=4, sub=3, else=1)
+          points += effectivePoints(pointsForOp(op), req.user); // weighted; 1-pt Qs boosted by the temp promo
         }
         // Spaced-repetition: advance on first-try-correct (distinct-day guarded inside),
         // demote on a first-try miss of a due fact. Sequential so the per-fact

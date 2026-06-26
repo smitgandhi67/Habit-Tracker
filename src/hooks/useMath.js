@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { pickDueQuestion, generateFacts } from '../lib/mathFacts';
 import { pointsForOp } from '../lib/mathRewards';
+import { effectivePoints } from '../lib/mathBonus';
 import { OP_KEYS, getType, parseTypedAnswer, gradeAnswer } from '../lib/questionTypes';
 
 const FLUSH_AT = 8; // buffered answers before an automatic background flush
@@ -179,7 +180,8 @@ export function useMath() {
     const answer = parseTypedAnswer(question.op, question.a, question.b, value);
     const correct = gradeAnswer(question.op, question.a, question.b, answer);
     const earns = correct && firstTry === true;
-    const pts = earns ? pointsForOp(question.op) : 0; // weighted per type
+    // weighted per type; 1-point Qs get the temp per-kid promo (mirrors the server)
+    const pts = earns ? effectivePoints(pointsForOp(question.op), user) : 0;
 
     buffer.current.push({ a: question.a, b: question.b, answer, firstTry: !!firstTry, date: today, op: question.op });
     writeLS(bufferKey(uid), buffer.current);
@@ -200,7 +202,7 @@ export function useMath() {
 
     if (buffer.current.length >= FLUSH_AT) flush();
     return { correct };
-  }, [question, today, uid, flush]);
+  }, [question, today, uid, user, flush]);
 
   // Advance to the next question using the freshest scheduling refs.
   const advance = useCallback(() => { nextQuestion(); }, [nextQuestion]);
