@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake, Trophy, Map } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
@@ -68,12 +68,28 @@ export default function Layout({ children }) {
                 <p className="text-xs text-slate-400 truncate">{user?.email}</p>
               </div>
               <NavLink
+                to="/trophies"
+                onClick={() => setShowMenu(false)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+              >
+                <Trophy size={15} /> Trophies
+              </NavLink>
+              <NavLink
                 to="/parenting"
                 onClick={() => setShowMenu(false)}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
               >
                 <HeartHandshake size={15} /> Parenting
               </NavLink>
+              {user?.isAdmin && (
+                <NavLink
+                  to="/journey/admin"
+                  onClick={() => setShowMenu(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <Map size={15} /> Roadmap
+                </NavLink>
+              )}
               {user?.isAdmin && (
                 <NavLink
                   to="/math/admin"

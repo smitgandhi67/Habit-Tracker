@@ -29,6 +29,7 @@ const exportRouter     = require('./routes/export');
 const mathRouter       = require('./routes/math');
 const parentingRouter  = require('./routes/parenting');
 const buildRouter      = require('./routes/build');
+const journeyRouter    = require('./routes/journey');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -76,6 +77,7 @@ app.use('/api/export',      requireAuth, exportRouter);
 app.use('/api/math',        requireAuth, mathRouter);
 app.use('/api/parenting',   requireAuth, parentingRouter);
 app.use('/api/build',       requireAuth, buildRouter);
+app.use('/api/journey',     requireAuth, journeyRouter);
 
 app.use(errorHandler);
 
