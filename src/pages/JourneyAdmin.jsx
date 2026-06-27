@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Trophy, Map, Plus, Trash2, Pencil, ExternalLink, X } from 'lucide-react';
+// `Map` is aliased: importing it unaliased shadows the built-in Map, which groupByGrade
+// uses via `new Map()` (→ "Map is not a constructor").
+import { Trophy, Map as MapIcon, Plus, Trash2, Pencil, ExternalLink, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useJourney } from '../hooks/useJourney';
 
@@ -91,7 +93,7 @@ export default function JourneyAdmin() {
           {/* Roadmap */}
           <section className="mb-8">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2"><Map size={18} className="text-violet-500" /> Roadmap</h2>
+              <h2 className="font-semibold text-slate-700 flex items-center gap-2"><MapIcon size={18} className="text-violet-500" /> Roadmap</h2>
               <button onClick={() => setMForm({ editId: null, ...EMPTY_M })} className="text-sm font-semibold text-violet-600 flex items-center gap-1"><Plus size={16} /> Milestone</button>
             </div>
 
