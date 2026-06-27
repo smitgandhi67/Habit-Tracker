@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { format } from 'date-fns';
 import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake, Trophy, Map } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -25,7 +26,10 @@ export default function Layout({ children }) {
   // (covers approve/redeem actions that happen on other pages). Failures hide it.
   useEffect(() => {
     let cancelled = false;
-    apiFetch('/api/math/state')
+    // /api/math/state requires the kid's local date (same as the Math page); without it
+    // the request 400s and the points badge silently never shows.
+    const today = format(new Date(), 'yyyy-MM-dd');
+    apiFetch(`/api/math/state?date=${today}`)
       .then(d => { if (!cancelled) setBalance(d?.balance ?? null); })
       .catch(() => { if (!cancelled) setBalance(null); });
     return () => { cancelled = true; };
