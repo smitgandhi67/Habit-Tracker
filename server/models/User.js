@@ -18,6 +18,9 @@ const userSchema = new mongoose.Schema({
   // School grade (2-5), set by the kid. Drives the math-practice difficulty caps
   // (multiplication and addition/subtraction ranges). null = no cap (full range).
   grade: { type: Number, enum: [2, 3, 4, 5], default: null },
+  // Date of birth (optional). Used by the Capabilities module to derive age for
+  // age-fit on activities and age-appropriate baseline framing. null = unknown.
+  birthdate: { type: Date, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

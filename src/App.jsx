@@ -20,6 +20,7 @@ import MealsEditor from './pages/MealsEditor';
 import MathPage from './pages/Math';
 import MathAdmin from './pages/MathAdmin';
 import Build from './pages/Build';
+import Skills from './pages/Skills';
 import Trophies from './pages/Trophies';
 import JourneyAdmin from './pages/JourneyAdmin';
 import PointsHistory from './pages/PointsHistory';
@@ -58,6 +59,7 @@ function AppInner() {
                   <Route path="/meals/:id/edit" element={<MealsEditor />} />
                   <Route path="/math" element={<MathPage />} />
                   <Route path="/build" element={<Build />} />
+                  <Route path="/skills" element={<Skills />} />
                   <Route path="/trophies" element={<Trophies />} />
                   <Route path="/journey/admin" element={<JourneyAdmin />} />
                   <Route path="/math/history" element={<PointsHistory />} />

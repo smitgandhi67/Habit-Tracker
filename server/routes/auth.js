@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const requireAuth = require('../middleware/auth');
 const { ADMIN_EMAIL } = require('../utils/auth');
+const { ageFromBirthdate } = require('../utils/age');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -48,6 +49,8 @@ router.post('/verify', async (req, res) => {
       weightUnit: user.weightUnit || 'lb',
       lengthUnit: user.lengthUnit || 'in',
       grade: user.grade ?? null,
+      birthdate: user.birthdate || null,
+      age: ageFromBirthdate(user.birthdate),
       isAdmin: user.email === ADMIN_EMAIL,
       createdAt: user.createdAt,
     });
@@ -70,6 +73,8 @@ router.get('/me', requireAuth, async (req, res) => {
       weightUnit: user.weightUnit || 'lb',
       lengthUnit: user.lengthUnit || 'in',
       grade: user.grade ?? null,
+      birthdate: user.birthdate || null,
+      age: ageFromBirthdate(user.birthdate),
       isAdmin: user.email === ADMIN_EMAIL,
       createdAt: user.createdAt,
     });
@@ -143,6 +148,36 @@ router.put('/length-unit', requireAuth, async (req, res) => {
     ).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ lengthUnit: user.lengthUnit });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/auth/birthdate — body: { birthdate: 'YYYY-MM-DD' | null }. null clears it.
+router.put('/birthdate', requireAuth, async (req, res) => {
+  try {
+    const { birthdate } = req.body || {};
+    let value = null;
+    if (birthdate != null) {
+      const d = new Date(birthdate);
+      if (Number.isNaN(d.getTime())) {
+        return res.status(400).json({ error: 'Invalid birthdate' });
+      }
+      const now = new Date();
+      // Reject the future and implausibly old (>25y) dates — this is a kid profile.
+      const oldest = new Date(now.getFullYear() - 25, now.getMonth(), now.getDate());
+      if (d > now || d < oldest) {
+        return res.status(400).json({ error: 'birthdate out of range' });
+      }
+      value = d;
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { birthdate: value },
+      { new: true }
+    ).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ birthdate: user.birthdate || null, age: ageFromBirthdate(user.birthdate) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
