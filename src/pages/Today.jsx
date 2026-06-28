@@ -7,6 +7,13 @@ import BuilderTodayCard from '../components/BuilderTodayCard';
 import { HabitListSkeleton } from '../components/Skeleton';
 import { apiFetch } from '../lib/api';
 
+// Tracking sections for the habit list, in display order.
+const SECTIONS = [
+  { key: 'pending',  label: 'Pending',           dot: 'bg-slate-300' },
+  { key: 'awaiting', label: 'Awaiting approval', dot: 'bg-amber-400' },
+  { key: 'approved', label: 'Done & approved',   dot: 'bg-green-500' },
+];
+
 export default function Today() {
   const [date, setDate] = useState(startOfDay(new Date()));
   const { habitsForDate, getStatus, getValue, cycleStatus, setLogValue, loading, ensureLogsForDate } = useHabitsContext();
@@ -40,6 +47,25 @@ export default function Today() {
   const total = habits.length;
   const progress = total === 0 ? 0 : Math.round(((done + half * 0.5) / total) * 100);
   const onToday  = isToday(date);
+
+  // Partition habits into the three tracking sections. A points-bearing habit
+  // that's done but not yet approved (or whose award hasn't synced) is awaiting;
+  // rejected points drop back to pending (needs redo); done with no points has
+  // nothing to approve, so it counts as approved.
+  const groups = { pending: [], awaiting: [], approved: [] };
+  for (const h of habits) {
+    const st = getStatus(h._id, date);
+    const pts = h.points || 0;
+    if (st === 'done') {
+      if (pts === 0) { groups.approved.push(h); continue; }
+      const aw = awards[h._id]?.status || 'pending';
+      if (aw === 'approved') groups.approved.push(h);
+      else if (aw === 'rejected') groups.pending.push(h);
+      else groups.awaiting.push(h);
+    } else {
+      groups.pending.push(h);
+    }
+  }
 
   const message =
     total === 0       ? '' :
@@ -131,18 +157,35 @@ export default function Today() {
           <p className="text-sm mt-1">Add habits in the Habits tab</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {habits.map(habit => (
-            <HabitCard
-              key={habit._id}
-              habit={habit}
-              status={getStatus(habit._id, date)}
-              onCycle={() => cycleStatus(habit._id, date)}
-              value={getValue(habit._id, date)}
-              onValueChange={(val) => setLogValue(habit._id, date, val)}
-              award={awards[habit._id]}
-            />
-          ))}
+        <div className="space-y-6">
+          {SECTIONS.map(sec => {
+            const list = groups[sec.key];
+            if (list.length === 0) return null;
+            return (
+              <div key={sec.key}>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <span className={`w-2 h-2 rounded-full ${sec.dot}`} />
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    {sec.label}
+                  </h2>
+                  <span className="text-xs font-semibold text-slate-400">{list.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {list.map(habit => (
+                    <HabitCard
+                      key={habit._id}
+                      habit={habit}
+                      status={getStatus(habit._id, date)}
+                      onCycle={() => cycleStatus(habit._id, date)}
+                      value={getValue(habit._id, date)}
+                      onValueChange={(val) => setLogValue(habit._id, date, val)}
+                      award={awards[habit._id]}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
