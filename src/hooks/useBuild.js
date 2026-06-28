@@ -63,6 +63,16 @@ export function useBuild() {
     } catch (e) { toast.error(await parseErr(e)); }
   }, []);
 
+  const updateProblem = useCallback(async (id, patch) => {
+    try {
+      const res = await apiFetch(`/api/build/problems/${id}`, {
+        method: 'PATCH', body: JSON.stringify(patch),
+      });
+      setProblems(p => p.map(x => (x._id === id ? res.problem : x)));
+      return res.problem;
+    } catch (e) { toast.error(await parseErr(e)); throw e; }
+  }, []);
+
   const removeProblem = useCallback(async (id) => {
     try {
       await apiFetch(`/api/build/problems/${id}`, { method: 'DELETE' });
@@ -112,7 +122,7 @@ export function useBuild() {
 
   return {
     loading, problems, projects, fluency, balance,
-    addProblem, setStatus, removeProblem,
+    addProblem, setStatus, updateProblem, removeProblem,
     addProject, updateProject, shipProject, removeProject,
     reload: load,
   };

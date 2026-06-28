@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Lightbulb, Plus, Trash2, Rocket, ExternalLink, Sparkles } from 'lucide-react';
+import { Lightbulb, Plus, Trash2, Rocket, ExternalLink, Sparkles, Pencil, Check, X } from 'lucide-react';
 import { useBuild } from '../hooks/useBuild';
 
 const KINDS = [
@@ -22,7 +22,40 @@ const STATUS_CHIP = {
   parked: 'bg-slate-100 text-slate-400 line-through',
 };
 
-function ProblemRow({ p, onStatus, onDelete }) {
+function ProblemRow({ p, onStatus, onDelete, onEdit }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(p.text);
+  const [saving, setSaving] = useState(false);
+
+  const cancel = () => { setEditing(false); setDraft(p.text); };
+
+  const save = async () => {
+    const t = draft.trim();
+    if (!t || t === p.text) { cancel(); return; }
+    setSaving(true);
+    try { await onEdit(p._id, { text: t }); setEditing(false); }
+    catch { /* toast in hook; stay in edit mode */ }
+    finally { setSaving(false); }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
+        <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') cancel(); }}
+          maxLength={280}
+          className="flex-1 min-w-0 text-sm rounded-lg border border-violet-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-200"
+        />
+        <button onClick={save} disabled={saving || !draft.trim()} className="text-violet-600 disabled:opacity-40 hover:text-violet-700" title="Save"><Check size={16} /></button>
+        <button onClick={cancel} className="text-slate-300 hover:text-slate-500" title="Cancel"><X size={16} /></button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
       <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
@@ -34,6 +67,7 @@ function ProblemRow({ p, onStatus, onDelete }) {
       {p.status === 'tinkering' && (
         <button onClick={() => onStatus(p._id, 'parked')} className="text-xs font-semibold text-slate-400 hover:underline">Park</button>
       )}
+      <button onClick={() => { setDraft(p.text); setEditing(true); }} className="text-slate-300 hover:text-violet-500" title="Edit"><Pencil size={14} /></button>
       <button onClick={() => onDelete(p._id)} className="text-slate-300 hover:text-red-400"><Trash2 size={15} /></button>
     </div>
   );
@@ -87,7 +121,7 @@ function ProjectCard({ p, onShip, onDelete }) {
 export default function Build() {
   const {
     loading, problems, projects, fluency,
-    addProblem, setStatus, removeProblem, addProject, shipProject, removeProject,
+    addProblem, setStatus, updateProblem, removeProblem, addProject, shipProject, removeProject,
   } = useBuild();
 
   const [text, setText] = useState('');
@@ -165,7 +199,7 @@ export default function Build() {
           ) : problems.length === 0 ? (
             <p className="text-sm text-slate-400 py-4 text-center">No problems logged yet. What&apos;s annoying or interesting today?</p>
           ) : (
-            problems.map(p => <ProblemRow key={p._id} p={p} onStatus={setStatus} onDelete={removeProblem} />)
+            problems.map(p => <ProblemRow key={p._id} p={p} onStatus={setStatus} onDelete={removeProblem} onEdit={updateProblem} />)
           )}
         </div>
       </section>

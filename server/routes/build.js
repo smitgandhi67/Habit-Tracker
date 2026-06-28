@@ -67,14 +67,28 @@ router.post('/problems', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/build/problems/:id — body { status }. Pick-to-build = 'tinkering'.
+// PATCH /api/build/problems/:id — body { status?, text?, kind? }. Pick-to-build = 'tinkering'.
 router.patch('/problems/:id', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid id required' });
-    const { status } = req.body || {};
-    if (!PROBLEM_STATUSES.includes(status)) return res.status(400).json({ error: `status must be one of: ${PROBLEM_STATUSES.join(', ')}` });
+    const b = req.body || {};
+    const patch = {};
+    if (b.status !== undefined) {
+      if (!PROBLEM_STATUSES.includes(b.status)) return res.status(400).json({ error: `status must be one of: ${PROBLEM_STATUSES.join(', ')}` });
+      patch.status = b.status;
+    }
+    if (b.text !== undefined) {
+      const t = String(b.text).trim();
+      if (!t) return res.status(400).json({ error: 'text cannot be empty' });
+      patch.text = t.slice(0, 280);
+    }
+    if (b.kind !== undefined) {
+      if (!PROBLEM_KINDS.includes(b.kind)) return res.status(400).json({ error: `kind must be one of: ${PROBLEM_KINDS.join(', ')}` });
+      patch.kind = b.kind;
+    }
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'nothing to update' });
     const problem = await ProblemEntry.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user._id }, { status }, { new: true },
+      { _id: req.params.id, userId: req.user._id }, patch, { new: true },
     ).lean();
     if (!problem) return res.status(404).json({ error: 'Not found' });
     res.json({ problem });
