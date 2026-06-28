@@ -6,6 +6,7 @@ const { DOMAINS, FOUNDATIONAL_KEYS } = require('../capabilities/domains');
 const { CITATIONS, citationsForDomain } = require('../capabilities/citations');
 const { listInstruments, getInstrument } = require('../capabilities/instruments');
 const { scoreInstrument, gapReport } = require('../parenting/scoring');
+const { computeTargets } = require('../capabilities/targets');
 const CapabilityAttempt = require('../models/CapabilityAttempt');
 const ParentingLink = require('../models/ParentingLink');
 const User = require('../models/User');
@@ -81,6 +82,8 @@ function attemptResult(attempt, inst) {
       raw: s.raw, mean: s.mean, n: s.n,
     })),
     dimensions: attempt.dimensions || [],
+    // Weakest foundations first — the parent's focus areas (§8 scoring→action).
+    targets: computeTargets(attempt.dimensions),
     interpretation: attempt.interpretation || {},
     completedAt: attempt.completedAt,
   };
