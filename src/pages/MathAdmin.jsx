@@ -1,11 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
+import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2, History } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 import { GRADES } from '../lib/mathGrades';
 import PointsLedger from '../components/PointsLedger';
+
+// 'yyyy-MM-dd' → 'Sat, Jun 27' for approval group headers.
+function fmtDate(d) {
+  try { return format(parseISO(d), 'EEE, MMM d'); } catch { return d; }
+}
 
 // Parent-only console: pick a kid, see their points, adjust them, assign habit
 // points, approve habit awards, and edit reward costs.
@@ -20,6 +26,44 @@ export default function MathAdmin() {
   const [awards, setAwards] = useState([]);    // pending habit-point awards across kids
   const [picked, setPicked] = useState(() => new Set()); // award ids checked for batch approve
   const [busy, setBusy] = useState(false);
+
+  // The kids who currently have any pending award — the baseline for "who didn't
+  // do this one". Derived from awards (not the raw roster) so the parent account
+  // never counts as a missing kid.
+  const allKids = useMemo(() => {
+    const m = new Map(); // userId -> name
+    for (const a of awards) m.set(String(a.userId), a.userName);
+    return m;
+  }, [awards]);
+
+  // Group pending awards by habit + date so both kids' submissions for the same
+  // habit sit together. Groups missing a kid (the odd-one-out) float to the top.
+  const awardGroups = useMemo(() => {
+    const groups = new Map();
+    for (const a of awards) {
+      const key = `${a.habitName}||${a.date}`;
+      let g = groups.get(key);
+      if (!g) { g = { key, habitName: a.habitName, habitEmoji: a.habitEmoji, date: a.date, items: [] }; groups.set(key, g); }
+      g.items.push(a);
+    }
+    const multiKid = allKids.size > 1;
+    const list = [...groups.values()].map(g => {
+      const submitterIds = new Set(g.items.map(i => String(i.userId)));
+      const submitterNames = [...new Set(g.items.map(i => i.userName))];
+      const missing = multiKid
+        ? [...allKids.entries()].filter(([id]) => !submitterIds.has(id)).map(([, name]) => name)
+        : [];
+      return { ...g, submitterNames, missing };
+    });
+    list.sort((a, b) => {
+      const au = a.missing.length > 0 ? 0 : 1;
+      const bu = b.missing.length > 0 ? 0 : 1;
+      if (au !== bu) return au - bu;                              // unique (missing a kid) first
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;     // then newest date
+      return a.habitName.localeCompare(b.habitName);
+    });
+    return list;
+  }, [awards, allKids]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -250,41 +294,62 @@ export default function MathAdmin() {
                 <Check size={15} /> Approve {picked.size} selected
               </button>
             )}
-            <div className="space-y-2">
-              {awards.map(a => (
-                <div
-                  key={a._id}
-                  className={`flex items-center gap-2 rounded-2xl border px-3 py-2 transition-colors ${
-                    picked.has(a._id) ? 'border-violet-300 bg-violet-50' : 'border-slate-100'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked.has(a._id)}
-                    onChange={() => togglePick(a._id)}
-                    className="w-4 h-4 accent-violet-600 cursor-pointer"
-                    aria-label={`Select ${a.userName} ${a.habitName}`}
-                  />
-                  <span className="text-lg select-none">{a.habitEmoji || '⭐'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-700 truncate">{a.userName} · {a.habitName}</p>
-                    <p className="text-xs text-slate-400">{a.date} · ⭐ {a.points}</p>
+            <div className="space-y-3">
+              {awardGroups.map(g => (
+                <div key={g.key} className="rounded-2xl border border-slate-100 overflow-hidden">
+                  {/* Habit + date header with the cross-kid comparison badge */}
+                  <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-100">
+                    <span className="text-lg select-none">{g.habitEmoji || '⭐'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-700 truncate">{g.habitName}</p>
+                      <p className="text-[11px] text-slate-400">{fmtDate(g.date)}</p>
+                    </div>
+                    {g.missing.length > 0 ? (
+                      <span className="shrink-0 text-[11px] font-bold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
+                        only {g.submitterNames.join(', ')}
+                      </span>
+                    ) : allKids.size > 1 ? (
+                      <span className="shrink-0 text-[11px] font-bold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                        both
+                      </span>
+                    ) : null}
                   </div>
-                  <button
-                    disabled={busy}
-                    onClick={() => reviewAward(a._id, 'approve')}
-                    className="flex items-center gap-1 bg-green-500 text-white text-sm font-bold rounded-xl px-3 py-1.5 hover:bg-green-600 disabled:opacity-50"
-                  >
-                    <Check size={15} /> Approve
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() => reviewAward(a._id, 'reject')}
-                    className="flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl px-2.5 py-1.5 hover:bg-slate-200 disabled:opacity-50"
-                    aria-label="Reject"
-                  >
-                    <X size={15} />
-                  </button>
+                  {/* One row per kid's submission — each approved/rejected on its own */}
+                  <div className="divide-y divide-slate-50">
+                    {g.items.map(a => (
+                      <div
+                        key={a._id}
+                        className={`flex items-center gap-2 px-3 py-2 transition-colors ${
+                          picked.has(a._id) ? 'bg-violet-50' : 'bg-white'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={picked.has(a._id)}
+                          onChange={() => togglePick(a._id)}
+                          className="w-4 h-4 accent-violet-600 cursor-pointer"
+                          aria-label={`Select ${a.userName} ${a.habitName}`}
+                        />
+                        <span className="flex-1 min-w-0 text-sm font-semibold text-slate-700 truncate">{a.userName}</span>
+                        <span className="shrink-0 text-xs text-slate-400 tabular-nums">⭐ {a.points}</span>
+                        <button
+                          disabled={busy}
+                          onClick={() => reviewAward(a._id, 'approve')}
+                          className="flex items-center gap-1 bg-green-500 text-white text-sm font-bold rounded-xl px-3 py-1.5 hover:bg-green-600 disabled:opacity-50"
+                        >
+                          <Check size={15} /> Approve
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => reviewAward(a._id, 'reject')}
+                          className="flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl px-2.5 py-1.5 hover:bg-slate-200 disabled:opacity-50"
+                          aria-label="Reject"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
