@@ -21,6 +21,9 @@ import MathPage from './pages/Math';
 import MathAdmin from './pages/MathAdmin';
 import Build from './pages/Build';
 import Skills from './pages/Skills';
+import SkillsBaselineParentQuiz from './pages/SkillsBaselineParentQuiz';
+import SkillsBaselineKidQuiz from './pages/SkillsBaselineKidQuiz';
+import SkillsBaselineResult from './pages/SkillsBaselineResult';
 import Trophies from './pages/Trophies';
 import JourneyAdmin from './pages/JourneyAdmin';
 import PointsHistory from './pages/PointsHistory';
@@ -60,6 +63,9 @@ function AppInner() {
                   <Route path="/math" element={<MathPage />} />
                   <Route path="/build" element={<Build />} />
                   <Route path="/skills" element={<Skills />} />
+                  <Route path="/skills/baseline/parent" element={<SkillsBaselineParentQuiz />} />
+                  <Route path="/skills/baseline/kid" element={<SkillsBaselineKidQuiz />} />
+                  <Route path="/skills/result/:id" element={<SkillsBaselineResult />} />
                   <Route path="/trophies" element={<Trophies />} />
                   <Route path="/journey/admin" element={<JourneyAdmin />} />
                   <Route path="/math/history" element={<PointsHistory />} />

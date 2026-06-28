@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Brain, Star } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { Brain, Star, ClipboardList, Smile } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { DOMAINS as FALLBACK_DOMAINS } from '../lib/capabilities/domains';
 
 // Capabilities ("Skills") module home. Day 1 scaffold: lists the 10 capability
 // domains served from the API (falls back to the bundled mirror if the request
 // fails), flags the three foundations, and frames the baseline that lands on Day 2.
 export default function Skills() {
+  const { user } = useAuth();
   const [domains, setDomains] = useState(FALLBACK_DOMAINS);
   const [error, setError] = useState(null);
 
@@ -33,6 +36,32 @@ export default function Skills() {
       {error && (
         <p className="text-xs text-amber-600 mb-3">Showing built-in list (couldn’t reach server: {error}).</p>
       )}
+
+      {/* Baseline check-in entry points */}
+      <div className="grid grid-cols-1 gap-2 mb-5">
+        {user?.isAdmin && (
+          <NavLink
+            to="/skills/baseline/parent"
+            className="flex items-center gap-3 rounded-2xl border border-violet-100 bg-violet-50 p-4 hover:bg-violet-100 transition-colors"
+          >
+            <ClipboardList size={20} className="text-violet-600 shrink-0" />
+            <span>
+              <span className="block text-sm font-semibold text-violet-800">Rate your child’s skills</span>
+              <span className="block text-xs text-violet-600/80">Parent baseline — 20 quick questions across the ten domains.</span>
+            </span>
+          </NavLink>
+        )}
+        <NavLink
+          to="/skills/baseline/kid"
+          className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4 hover:bg-sky-100 transition-colors"
+        >
+          <Smile size={20} className="text-sky-600 shrink-0" />
+          <span>
+            <span className="block text-sm font-semibold text-sky-800">My skills check-in</span>
+            <span className="block text-xs text-sky-600/80">For kids — ten quick “how much is this like me?” questions.</span>
+          </span>
+        </NavLink>
+      </div>
 
       <ul className="space-y-2">
         {domains.map(d => (
