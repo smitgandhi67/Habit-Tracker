@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Brain, Star, ClipboardList, Smile, Compass, Activity } from 'lucide-react';
+import { Brain, Star, ClipboardList, Smile, Compass, Activity, HandHelping, BookOpen } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { DOMAINS as FALLBACK_DOMAINS } from '../lib/capabilities/domains';
@@ -79,6 +79,26 @@ export default function Skills() {
           <span>
             <span className="block text-sm font-semibold text-emerald-800">Activity tracker</span>
             <span className="block text-xs text-emerald-600/80">Log reps and watch them roll up per domain across the app.</span>
+          </span>
+        </NavLink>
+        <NavLink
+          to="/skills/coaching"
+          className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:bg-slate-50 transition-colors"
+        >
+          <HandHelping size={20} className="text-slate-600 shrink-0" />
+          <span>
+            <span className="block text-sm font-semibold text-slate-800">How to coach it</span>
+            <span className="block text-xs text-slate-500">Six rules that turn any activity into a skill — the part that decides whether it works.</span>
+          </span>
+        </NavLink>
+        <NavLink
+          to="/skills/reference"
+          className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 hover:bg-slate-50 transition-colors"
+        >
+          <BookOpen size={20} className="text-slate-600 shrink-0" />
+          <span>
+            <span className="block text-sm font-semibold text-slate-800">The evidence</span>
+            <span className="block text-xs text-slate-500">Every claim, its source, and how strong it is — re-checked, not assumed.</span>
           </span>
         </NavLink>
       </div>

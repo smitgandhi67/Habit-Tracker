@@ -7,8 +7,10 @@ import { DOMAINS, getDomain } from '../lib/capabilities/domains';
 const TIER_LABEL = { 1: 'Tier 1 · do these', 2: 'Tier 2 · strong, high-value', 3: 'Tier 3 · for their own sake' };
 const STRENGTH_STYLE = {
   VERIFIED: 'bg-emerald-50 text-emerald-700',
-  KNOWN: 'bg-amber-50 text-amber-700',
+  MIXED: 'bg-amber-50 text-amber-700',
+  KNOWN: 'bg-slate-100 text-slate-500',
 };
+const STRENGTH_LABEL = { VERIFIED: 'Verified', MIXED: 'Contested', KNOWN: 'Unverified' };
 
 function DomainTags({ keys }) {
   return (
@@ -47,7 +49,7 @@ function ActivityCard({ a }) {
         <p className="font-semibold text-slate-800 text-sm">{a.title}</p>
         {a.citation && (
           <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${STRENGTH_STYLE[a.citation.strength] || 'bg-slate-100 text-slate-500'}`}>
-            {a.citation.strength}
+            {STRENGTH_LABEL[a.citation.strength] || a.citation.strength}
           </span>
         )}
       </div>
@@ -62,6 +64,9 @@ function ActivityCard({ a }) {
         <div className="mt-2 rounded-xl bg-violet-50/70 border border-violet-100 px-3 py-2">
           <p className="text-[10px] font-bold uppercase tracking-wider text-violet-500 mb-0.5">How to run it</p>
           <p className="text-xs text-violet-900/90 leading-relaxed">{a.approachRule}</p>
+          <Link to="/skills/coaching" className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-violet-600 hover:text-violet-700">
+            <Compass size={11} /> the six coaching rules
+          </Link>
         </div>
       )}
 

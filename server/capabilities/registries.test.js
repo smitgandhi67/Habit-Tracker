@@ -49,9 +49,17 @@ test('citations: unique keys, every domainKey resolves to a real domain', () => 
 
 test('citations: strength enum and KNOWN<=>needsReverify invariant', () => {
   for (const c of CITATIONS) {
-    assert.ok(['VERIFIED', 'KNOWN'].includes(c.strength), `${c.key} bad strength ${c.strength}`);
-    if (c.strength === 'KNOWN') assert.equal(c.needsReverify, true, `${c.key} KNOWN must needReverify`);
-    if (c.strength === 'VERIFIED') assert.equal(c.needsReverify, false, `${c.key} VERIFIED must not needReverify`);
+    assert.ok(['VERIFIED', 'MIXED', 'KNOWN'].includes(c.strength), `${c.key} bad strength ${c.strength}`);
+    // needsReverify is true for, and only for, un-source-checked KNOWN entries.
+    assert.equal(c.needsReverify, c.strength === 'KNOWN', `${c.key} needsReverify must track KNOWN`);
+  }
+});
+
+test('citations: Day 6 re-verification complete — every entry source-checked', () => {
+  for (const c of CITATIONS) {
+    // Nothing may still be awaiting re-verification (handover §10.5 / R6).
+    assert.equal(c.needsReverify, false, `${c.key} still needs re-verification`);
+    assert.ok(typeof c.verifyNote === 'string' && c.verifyNote.length > 10, `${c.key} missing verifyNote`);
   }
 });
 
