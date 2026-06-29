@@ -4,11 +4,12 @@
 // Builder actions credit the same wallet.
 
 // Point values — tune here.
-const POINTS = { problem: 2, ship: 25 };
+const POINTS = { problem: 2, ship: 25, problemSolved: 100 };
 const DAILY_PROBLEM_CAP = 3; // only the first N problems logged per day earn points (anti-farm)
 
 const PROBLEM_KINDS = ['annoyance', 'curiosity', 'idea'];
-const PROBLEM_STATUSES = ['logged', 'tinkering', 'parked'];
+// 'done' = kid marked the problem solved; sends a 100-pt award for parent approval.
+const PROBLEM_STATUSES = ['logged', 'tinkering', 'parked', 'done'];
 
 // AI-fluency ladder (doc: helper → tool → partner → multiplier). A kid's badge is the
 // highest level reached by any SHIPPED project; shipped count drives the "next" hint.

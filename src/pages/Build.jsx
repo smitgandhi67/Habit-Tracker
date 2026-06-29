@@ -20,12 +20,23 @@ const STATUS_CHIP = {
   logged: 'bg-slate-100 text-slate-500',
   tinkering: 'bg-amber-100 text-amber-700',
   parked: 'bg-slate-100 text-slate-400 line-through',
+  done: 'bg-green-100 text-green-700',
+};
+
+// Approval state of a solved problem (from the new ProblemAward), shown in place of the
+// raw status chip once the kid has marked it done.
+const APPROVAL_BADGE = {
+  pending: { cls: 'bg-amber-100 text-amber-700', label: 'Awaiting approval' },
+  approved: { cls: 'bg-green-100 text-green-700', label: 'Earned 100 ⭐' },
+  rejected: { cls: 'bg-rose-100 text-rose-600', label: 'Not approved' },
 };
 
 function ProblemRow({ p, onStatus, onDelete, onEdit }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(p.text);
   const [saving, setSaving] = useState(false);
+  const [confirmingDone, setConfirmingDone] = useState(false);
+  const [marking, setMarking] = useState(false);
 
   const cancel = () => { setEditing(false); setDraft(p.text); };
 
@@ -36,6 +47,12 @@ function ProblemRow({ p, onStatus, onDelete, onEdit }) {
     try { await onEdit(p._id, { text: t }); setEditing(false); }
     catch { /* toast in hook; stay in edit mode */ }
     finally { setSaving(false); }
+  };
+
+  const markDone = async () => {
+    setMarking(true);
+    try { await onStatus(p._id, 'done'); setConfirmingDone(false); }
+    finally { setMarking(false); }
   };
 
   if (editing) {
@@ -56,16 +73,40 @@ function ProblemRow({ p, onStatus, onDelete, onEdit }) {
     );
   }
 
+  // Confirm before sending for approval — guards against an accidental tap, since marking
+  // done is one-way (a problem can only earn the 100 once).
+  if (confirmingDone) {
+    return (
+      <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
+        <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
+        <span className="flex-1 min-w-0 text-sm text-slate-600">Mark done &amp; send for approval? You&apos;ll earn 100 ⭐ once a parent approves.</span>
+        <button onClick={markDone} disabled={marking} className="text-xs font-semibold text-green-600 disabled:opacity-40 hover:underline">Yes, mark done</button>
+        <button onClick={() => setConfirmingDone(false)} className="text-xs font-semibold text-slate-400 hover:underline">Cancel</button>
+      </div>
+    );
+  }
+
+  const badge = APPROVAL_BADGE[p.approval];
+
   return (
     <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
       <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
       <span className={`flex-1 text-sm ${p.status === 'parked' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{p.text}</span>
-      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_CHIP[p.status]}`}>{p.status}</span>
-      {p.status !== 'tinkering' && p.status !== 'parked' && (
-        <button onClick={() => onStatus(p._id, 'tinkering')} className="text-xs font-semibold text-violet-600 hover:underline">Tinker</button>
+      {badge ? (
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
+      ) : (
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_CHIP[p.status]}`}>{p.status}</span>
       )}
-      {p.status === 'tinkering' && (
-        <button onClick={() => onStatus(p._id, 'parked')} className="text-xs font-semibold text-slate-400 hover:underline">Park</button>
+      {p.status !== 'done' && (
+        <>
+          {p.status !== 'tinkering' && p.status !== 'parked' && (
+            <button onClick={() => onStatus(p._id, 'tinkering')} className="text-xs font-semibold text-violet-600 hover:underline">Tinker</button>
+          )}
+          {p.status === 'tinkering' && (
+            <button onClick={() => onStatus(p._id, 'parked')} className="text-xs font-semibold text-slate-400 hover:underline">Park</button>
+          )}
+          <button onClick={() => setConfirmingDone(true)} className="text-xs font-semibold text-green-600 hover:underline">Done</button>
+        </>
       )}
       <button onClick={() => { setDraft(p.text); setEditing(true); }} className="text-slate-300 hover:text-violet-500" title="Edit"><Pencil size={14} /></button>
       <button onClick={() => onDelete(p._id)} className="text-slate-300 hover:text-red-400"><Trash2 size={15} /></button>

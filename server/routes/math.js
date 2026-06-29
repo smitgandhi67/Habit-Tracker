@@ -9,6 +9,7 @@ const MathPointAdjustment = require('../models/MathPointAdjustment');
 const MathRewardConfig = require('../models/MathRewardConfig');
 const Habit = require('../models/Habit');
 const HabitPointAward = require('../models/HabitPointAward');
+const ProblemAward = require('../models/ProblemAward');
 const User = require('../models/User');
 const { requireAdmin } = require('../utils/auth');
 const {
@@ -491,33 +492,98 @@ router.put('/admin/habits/:habitId/points', requireAdmin, async (req, res, next)
   } catch (err) { next(err); }
 });
 
+// Emoji per problem kind, so solved-problem awards read nicely in the parent queue.
+const PROBLEM_KIND_EMOJI = { idea: '💡', curiosity: '🤔', annoyance: '😤' };
+
 // GET /api/math/admin/habit-awards?status=pending — awards to review, enriched with
-// kid + habit names. Defaults to pending; accepts pending|approved|rejected.
+// kid + habit names. Merges habit completions and solved-problem awards into one queue
+// (each row tagged `source`). Defaults to pending; accepts pending|approved|rejected.
 router.get('/admin/habit-awards', requireAdmin, async (req, res, next) => {
   try {
     const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : 'pending';
-    const awards = await HabitPointAward.find({ status }).sort({ date: -1, createdAt: -1 }).limit(500).lean();
-    const userIds = [...new Set(awards.map(a => String(a.userId)))];
-    const habitIds = [...new Set(awards.map(a => String(a.habitId)))];
+    const [habitAwards, problemAwards] = await Promise.all([
+      HabitPointAward.find({ status }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
+      ProblemAward.find({ status }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
+    ]);
+    const userIds = [...new Set([...habitAwards, ...problemAwards].map(a => String(a.userId)))];
+    const habitIds = [...new Set(habitAwards.map(a => String(a.habitId)))];
     const [users, habits] = await Promise.all([
       User.find({ _id: { $in: userIds } }).select('name email').lean(),
       Habit.find({ _id: { $in: habitIds } }).select('name emoji').lean(),
     ]);
     const userMap = new Map(users.map(u => [String(u._id), u]));
     const habitMap = new Map(habits.map(h => [String(h._id), h]));
-    res.json(awards.map(a => ({
-      _id: a._id,
-      userId: a.userId,
-      userName: userMap.get(String(a.userId))?.name || '—',
-      habitId: a.habitId,
-      habitName: habitMap.get(String(a.habitId))?.name || '—',
-      habitEmoji: habitMap.get(String(a.habitId))?.emoji || '',
-      date: a.date,
-      points: a.points,
-      status: a.status,
-    })));
+    const rows = [
+      ...habitAwards.map(a => ({
+        _id: a._id,
+        source: 'habit',
+        userId: a.userId,
+        userName: userMap.get(String(a.userId))?.name || '—',
+        habitId: a.habitId,
+        habitName: habitMap.get(String(a.habitId))?.name || '—',
+        habitEmoji: habitMap.get(String(a.habitId))?.emoji || '',
+        date: a.date,
+        points: a.points,
+        status: a.status,
+        createdAt: a.createdAt,
+      })),
+      ...problemAwards.map(a => ({
+        _id: a._id,
+        source: 'problem',
+        userId: a.userId,
+        userName: userMap.get(String(a.userId))?.name || '—',
+        habitId: null,
+        habitName: a.text,
+        habitEmoji: PROBLEM_KIND_EMOJI[a.kind] || '💡',
+        date: a.date,
+        points: a.points,
+        status: a.status,
+        createdAt: a.createdAt,
+      })),
+    ];
+    // Newest first across both sources (date, then created time).
+    rows.sort((x, y) => (y.date || '').localeCompare(x.date || '') || new Date(y.createdAt) - new Date(x.createdAt));
+    res.json(rows.map(({ createdAt, ...r }) => r));
   } catch (err) { next(err); }
 });
+
+// Approve a single solved-problem award (pending->approved): atomic claim, credit the
+// shared pool, write an audit row. Mirrors the habit-award approve guards. Returns a
+// small result the caller maps to an HTTP response: { notFound } | { conflict } | { award }.
+async function approveProblemAward(id, adminEmail) {
+  const award = await ProblemAward.findOneAndUpdate(
+    { _id: id, status: 'pending' },
+    { $set: { status: 'approved', reviewedBy: adminEmail, reviewedAt: new Date() } },
+    { new: true }
+  );
+  if (!award) {
+    const existing = await ProblemAward.findById(id).lean();
+    if (!existing) return { notFound: true };
+    if (existing.status === 'approved') return { award: existing }; // idempotent, no double credit
+    return { conflict: existing.status };
+  }
+  if (award.points > 0) {
+    try {
+      await MathReward.findOneAndUpdate(
+        { userId: award.userId },
+        { $inc: { pointsEarned: award.points }, $setOnInsert: { pointsSpent: 0 } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      await MathPointAdjustment.create({
+        userId: award.userId, adminEmail, type: 'add',
+        amount: award.points, reason: `Problem solved: "${award.text}"`,
+      });
+    } catch (creditErr) {
+      // Revert the flip so the award isn't left approved-but-uncredited; safe to retry.
+      await ProblemAward.updateOne(
+        { _id: award._id },
+        { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+      );
+      throw creditErr;
+    }
+  }
+  return { award };
+}
 
 // POST /api/math/admin/habit-awards/:id/approve — idempotent: credits the kid's pool
 // once on the pending→approved transition, with an audit row.
@@ -533,9 +599,15 @@ router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, ne
       { new: true }
     );
     if (!award) {
-      // Didn't transition: missing, or already approved/rejected. Distinguish for the client.
+      // Didn't transition. Either it's a solved-problem award (different collection),
+      // or a habit award that's missing/already-reviewed. Distinguish for the client.
       const existing = await HabitPointAward.findById(req.params.id).lean();
-      if (!existing) return res.status(404).json({ error: 'Award not found' });
+      if (!existing) {
+        const r = await approveProblemAward(req.params.id, req.user.email);
+        if (r.notFound) return res.status(404).json({ error: 'Award not found' });
+        if (r.conflict) return res.status(409).json({ error: `Cannot approve a ${r.conflict} award` });
+        return res.json({ award: r.award });
+      }
       if (existing.status === 'approved') return res.json({ award: existing }); // idempotent, no double credit
       return res.status(409).json({ error: `Cannot approve a ${existing.status} award` });
     }
@@ -570,7 +642,8 @@ router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, ne
 router.post('/admin/habit-awards/:id/reject', requireAdmin, async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid award id required' });
-    const award = await HabitPointAward.findById(req.params.id);
+    const award = await HabitPointAward.findById(req.params.id)
+      || await ProblemAward.findById(req.params.id);
     if (!award) return res.status(404).json({ error: 'Award not found' });
     if (award.status === 'approved') return res.status(409).json({ error: 'Cannot reject an already-approved award' });
 
@@ -605,47 +678,86 @@ router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, 
       { _id: { $in: validIds }, status: 'approved', reviewedBy: req.user.email, reviewedAt: ts }
     ).lean();
 
-    if (claimed.length === 0) {
-      return res.json({ approved: 0, skipped: validIds.length, ids: [] });
-    }
-
     // Sum points per kid → one $inc per distinct kid (bulk), one audit row per credited award.
-    const perUser = new Map();
-    for (const a of claimed) {
-      if (a.points > 0) perUser.set(String(a.userId), (perUser.get(String(a.userId)) || 0) + a.points);
-    }
-    if (perUser.size > 0) {
-      try {
-        const credited = claimed.filter(a => a.points > 0);
-        const habitIds = [...new Set(credited.map(a => String(a.habitId)))];
-        const habits = await Habit.find({ _id: { $in: habitIds } }).select('name').lean();
-        const nameById = new Map(habits.map(h => [String(h._id), h.name]));
-        await MathReward.bulkWrite([...perUser].map(([userId, pts]) => ({
-          updateOne: {
-            filter: { userId },
-            update: { $inc: { pointsEarned: pts }, $setOnInsert: { pointsSpent: 0 } },
-            upsert: true,
-          },
-        })));
-        await MathPointAdjustment.insertMany(
-          credited.map(a => ({
-            userId: a.userId, adminEmail: req.user.email, type: 'add',
-            amount: a.points,
-            reason: `Habit award: ${nameById.get(String(a.habitId)) || 'Unknown habit'} (${a.date})`,
-          }))
-        );
-      } catch (creditErr) {
-        // Crediting failed after the status flip — revert these awards to pending so they
-        // aren't left approved-but-uncredited. Safe to retry the batch afterward.
-        await HabitPointAward.updateMany(
-          { _id: { $in: claimed.map(a => a._id) } },
-          { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
-        );
-        throw creditErr;
+    if (claimed.length > 0) {
+      const perUser = new Map();
+      for (const a of claimed) {
+        if (a.points > 0) perUser.set(String(a.userId), (perUser.get(String(a.userId)) || 0) + a.points);
+      }
+      if (perUser.size > 0) {
+        try {
+          const credited = claimed.filter(a => a.points > 0);
+          const habitIds = [...new Set(credited.map(a => String(a.habitId)))];
+          const habits = await Habit.find({ _id: { $in: habitIds } }).select('name').lean();
+          const nameById = new Map(habits.map(h => [String(h._id), h.name]));
+          await MathReward.bulkWrite([...perUser].map(([userId, pts]) => ({
+            updateOne: {
+              filter: { userId },
+              update: { $inc: { pointsEarned: pts }, $setOnInsert: { pointsSpent: 0 } },
+              upsert: true,
+            },
+          })));
+          await MathPointAdjustment.insertMany(
+            credited.map(a => ({
+              userId: a.userId, adminEmail: req.user.email, type: 'add',
+              amount: a.points,
+              reason: `Habit award: ${nameById.get(String(a.habitId)) || 'Unknown habit'} (${a.date})`,
+            }))
+          );
+        } catch (creditErr) {
+          // Crediting failed after the status flip — revert these awards to pending so they
+          // aren't left approved-but-uncredited. Safe to retry the batch afterward.
+          await HabitPointAward.updateMany(
+            { _id: { $in: claimed.map(a => a._id) } },
+            { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+          );
+          throw creditErr;
+        }
       }
     }
 
-    res.json({ approved: claimed.length, skipped: validIds.length - claimed.length, ids: claimed.map(a => a._id) });
+    // Solved-problem awards share the parent's queue, so the same id batch may include
+    // them. Same guarded claim + credit + revert pattern, against the ProblemAward set.
+    await ProblemAward.updateMany(
+      { _id: { $in: validIds }, status: 'pending' },
+      { $set: { status: 'approved', reviewedBy: req.user.email, reviewedAt: ts } }
+    );
+    const claimedP = await ProblemAward.find(
+      { _id: { $in: validIds }, status: 'approved', reviewedBy: req.user.email, reviewedAt: ts }
+    ).lean();
+    if (claimedP.length > 0) {
+      const perUserP = new Map();
+      for (const a of claimedP) {
+        if (a.points > 0) perUserP.set(String(a.userId), (perUserP.get(String(a.userId)) || 0) + a.points);
+      }
+      if (perUserP.size > 0) {
+        try {
+          const credited = claimedP.filter(a => a.points > 0);
+          await MathReward.bulkWrite([...perUserP].map(([userId, pts]) => ({
+            updateOne: {
+              filter: { userId },
+              update: { $inc: { pointsEarned: pts }, $setOnInsert: { pointsSpent: 0 } },
+              upsert: true,
+            },
+          })));
+          await MathPointAdjustment.insertMany(
+            credited.map(a => ({
+              userId: a.userId, adminEmail: req.user.email, type: 'add',
+              amount: a.points, reason: `Problem solved: "${a.text}"`,
+            }))
+          );
+        } catch (creditErr) {
+          await ProblemAward.updateMany(
+            { _id: { $in: claimedP.map(a => a._id) } },
+            { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+          );
+          throw creditErr;
+        }
+      }
+    }
+
+    const approvedIds = [...claimed.map(a => a._id), ...claimedP.map(a => a._id)];
+    res.json({ approved: approvedIds.length, skipped: validIds.length - approvedIds.length, ids: approvedIds });
   } catch (err) { next(err); }
 });
 

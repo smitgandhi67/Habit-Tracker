@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 
 const ProblemEntry = require('../models/ProblemEntry');
+const ProblemAward = require('../models/ProblemAward');
 const BuildProject = require('../models/BuildProject');
 const MathReward = require('../models/MathReward');
 const MathPointAdjustment = require('../models/MathPointAdjustment');
@@ -37,12 +38,16 @@ async function balanceFor(userId) {
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const [problems, projects, balance] = await Promise.all([
+    const [problems, projects, balance, awards] = await Promise.all([
       ProblemEntry.find({ userId }).sort({ createdAt: -1 }).limit(200).lean(),
       BuildProject.find({ userId }).sort({ createdAt: -1 }).limit(200).lean(),
       balanceFor(userId),
+      ProblemAward.find({ userId }).select('problemId status').lean(),
     ]);
-    res.json({ problems, projects, fluency: topFluency(projects.filter(p => p.shippedAt)), balance });
+    // Surface each problem's approval state so the kid sees pending/approved/rejected.
+    const awardByProblem = new Map(awards.map(a => [String(a.problemId), a.status]));
+    const withApproval = problems.map(p => ({ ...p, approval: awardByProblem.get(String(p._id)) || null }));
+    res.json({ problems: withApproval, projects, fluency: topFluency(projects.filter(p => p.shippedAt)), balance });
   } catch (err) { next(err); }
 });
 
@@ -91,7 +96,28 @@ router.patch('/problems/:id', async (req, res, next) => {
       { _id: req.params.id, userId: req.user._id }, patch, { new: true },
     ).lean();
     if (!problem) return res.status(404).json({ error: 'Not found' });
-    res.json({ problem });
+
+    // Marking a problem 'done' sends it for parent approval worth POINTS.problemSolved.
+    // Idempotent: the unique problemId index means re-marking never creates a 2nd award.
+    let approval = null;
+    if (patch.status === 'done') {
+      try {
+        const award = await ProblemAward.create({
+          userId: req.user._id, problemId: problem._id, text: problem.text,
+          kind: problem.kind, date: problem.date, points: POINTS.problemSolved, status: 'pending',
+        });
+        approval = award.status;
+      } catch (e) {
+        if (e.code === 11000) {
+          const existing = await ProblemAward.findOne({ problemId: problem._id }).select('status').lean();
+          approval = existing?.status || null;
+        } else { throw e; }
+      }
+    } else {
+      const existing = await ProblemAward.findOne({ problemId: problem._id }).select('status').lean();
+      approval = existing?.status || null;
+    }
+    res.json({ problem: { ...problem, approval } });
   } catch (err) { next(err); }
 });
 
@@ -101,6 +127,7 @@ router.delete('/problems/:id', async (req, res, next) => {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid id required' });
     const r = await ProblemEntry.deleteOne({ _id: req.params.id, userId: req.user._id });
     if (r.deletedCount === 0) return res.status(404).json({ error: 'Not found' });
+    await ProblemAward.deleteOne({ problemId: req.params.id, userId: req.user._id });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
