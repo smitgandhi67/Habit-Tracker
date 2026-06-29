@@ -73,44 +73,69 @@ function ProblemRow({ p, onStatus, onDelete, onEdit }) {
     );
   }
 
-  // Confirm before sending for approval — guards against an accidental tap, since marking
-  // done is one-way (a problem can only earn the 100 once).
-  if (confirmingDone) {
-    return (
-      <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
-        <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
-        <span className="flex-1 min-w-0 text-sm text-slate-600">Mark done &amp; send for approval? You&apos;ll earn 100 ⭐ once a parent approves.</span>
-        <button onClick={markDone} disabled={marking} className="text-xs font-semibold text-green-600 disabled:opacity-40 hover:underline">Yes, mark done</button>
-        <button onClick={() => setConfirmingDone(false)} className="text-xs font-semibold text-slate-400 hover:underline">Cancel</button>
-      </div>
-    );
-  }
-
   const badge = APPROVAL_BADGE[p.approval];
 
   return (
-    <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
-      <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
-      <span className={`flex-1 text-sm ${p.status === 'parked' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{p.text}</span>
-      {badge ? (
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
-      ) : (
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_CHIP[p.status]}`}>{p.status}</span>
+    <>
+      <div className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
+        <span className="text-lg shrink-0">{KIND_EMOJI[p.kind] || '💡'}</span>
+        <span className={`flex-1 text-sm ${p.status === 'parked' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{p.text}</span>
+        {badge ? (
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
+        ) : (
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_CHIP[p.status]}`}>{p.status}</span>
+        )}
+        {p.status !== 'done' && (
+          <>
+            {p.status !== 'tinkering' && p.status !== 'parked' && (
+              <button onClick={() => onStatus(p._id, 'tinkering')} className="text-xs font-semibold text-violet-600 hover:underline">Tinker</button>
+            )}
+            {p.status === 'tinkering' && (
+              <button onClick={() => onStatus(p._id, 'parked')} className="text-xs font-semibold text-slate-400 hover:underline">Park</button>
+            )}
+            <button onClick={() => setConfirmingDone(true)} className="text-xs font-semibold text-green-600 hover:underline">Done</button>
+          </>
+        )}
+        <button onClick={() => { setDraft(p.text); setEditing(true); }} className="text-slate-300 hover:text-violet-500" title="Edit"><Pencil size={14} /></button>
+        <button onClick={() => onDelete(p._id)} className="text-slate-300 hover:text-red-400"><Trash2 size={15} /></button>
+      </div>
+
+      {/* Confirm popup — guards against an accidental tap, since marking done is one-way
+          (a problem can only earn the 100 once). */}
+      {confirmingDone && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => { if (!marking) setConfirmingDone(false); }}
+        >
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">{KIND_EMOJI[p.kind] || '💡'}</span>
+              <h3 className="font-bold text-slate-800">Mark this problem done?</h3>
+            </div>
+            <p className="text-sm text-slate-500 mb-2 break-words">&ldquo;{p.text}&rdquo;</p>
+            <p className="text-sm text-slate-600 mb-5">
+              This sends it for approval. You&apos;ll earn <strong className="text-green-600">100 ⭐</strong> once a parent approves — and a problem can only earn this once.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmingDone(false)}
+                disabled={marking}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={markDone}
+                disabled={marking}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-green-600 disabled:opacity-40 text-white"
+              >
+                {marking ? 'Sending…' : 'Yes, mark done'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-      {p.status !== 'done' && (
-        <>
-          {p.status !== 'tinkering' && p.status !== 'parked' && (
-            <button onClick={() => onStatus(p._id, 'tinkering')} className="text-xs font-semibold text-violet-600 hover:underline">Tinker</button>
-          )}
-          {p.status === 'tinkering' && (
-            <button onClick={() => onStatus(p._id, 'parked')} className="text-xs font-semibold text-slate-400 hover:underline">Park</button>
-          )}
-          <button onClick={() => setConfirmingDone(true)} className="text-xs font-semibold text-green-600 hover:underline">Done</button>
-        </>
-      )}
-      <button onClick={() => { setDraft(p.text); setEditing(true); }} className="text-slate-300 hover:text-violet-500" title="Edit"><Pencil size={14} /></button>
-      <button onClick={() => onDelete(p._id)} className="text-slate-300 hover:text-red-400"><Trash2 size={15} /></button>
-    </div>
+    </>
   );
 }
 
