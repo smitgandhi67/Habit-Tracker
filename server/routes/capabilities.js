@@ -3,11 +3,12 @@ const router = express.Router();
 const mongoose = require('mongoose');
 
 const { DOMAINS, FOUNDATIONAL_KEYS } = require('../capabilities/domains');
-const { CITATIONS, citationsForDomain } = require('../capabilities/citations');
+const { CITATIONS, citationsForDomain, getCitation } = require('../capabilities/citations');
 const { listInstruments, getInstrument } = require('../capabilities/instruments');
 const { scoreInstrument, gapReport } = require('../parenting/scoring');
 const { computeTargets } = require('../capabilities/targets');
 const CapabilityAttempt = require('../models/CapabilityAttempt');
+const CapabilityActivity = require('../models/CapabilityActivity');
 const ParentingLink = require('../models/ParentingLink');
 const User = require('../models/User');
 const { isAdmin, requireAdmin } = require('../utils/auth');
@@ -29,6 +30,60 @@ router.get('/citations', (req, res) => {
   const { domain } = req.query;
   const items = typeof domain === 'string' && domain ? citationsForDomain(domain) : CITATIONS;
   res.json({ citations: items });
+});
+
+// ---- activity library (Day 4) ----------------------------------------------
+
+function serializeActivity(a) {
+  const c = a.citationKey ? getCitation(a.citationKey) : null;
+  return {
+    slug: a.slug,
+    title: a.title,
+    domainKeys: a.domainKeys || [],
+    tier: a.tier ?? null,
+    kind: a.kind || 'do',
+    approachRule: a.approachRule || '',
+    why: a.why || '',
+    skipReason: a.skipReason || '',
+    minAge: a.minAge ?? null,
+    maxAge: a.maxAge ?? null,
+    citation: c ? { key: c.key, cite: c.cite, strength: c.strength } : null,
+  };
+}
+
+// GET /api/capabilities/activities[?domain=&tier=&age=&kind=] — the §6 menu,
+// filterable by domain, tier, age-fit, and kind. Ordered do-before-skip, tier asc.
+router.get('/activities', async (req, res, next) => {
+  try {
+    const { domain, tier, age, kind } = req.query;
+    const filter = { archivedAt: null };
+    if (typeof domain === 'string' && domain) filter.domainKeys = domain;
+    if (kind === 'do' || kind === 'skip') filter.kind = kind;
+    if (tier != null && tier !== '') {
+      const t = Number(tier);
+      if ([1, 2, 3].includes(t)) filter.tier = t;
+    }
+
+    let docs = await CapabilityActivity.find(filter).lean();
+
+    if (age != null && age !== '') {
+      const a = Number(age);
+      if (Number.isFinite(a)) {
+        docs = docs.filter(d => (d.minAge == null || a >= d.minAge) && (d.maxAge == null || a <= d.maxAge));
+      }
+    }
+
+    docs.sort((x, y) => {
+      if ((x.kind === 'skip') !== (y.kind === 'skip')) return x.kind === 'skip' ? 1 : -1;
+      const tx = x.tier ?? 99;
+      const ty = y.tier ?? 99;
+      return tx - ty || (x.order ?? 0) - (y.order ?? 0);
+    });
+
+    res.json({ activities: docs.map(serializeActivity) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ---- instrument serializers ------------------------------------------------
