@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { format, addDays, subDays, isToday, startOfDay } from 'date-fns';
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { useHabitsContext } from '../hooks/useHabits';
@@ -13,6 +13,11 @@ const SECTIONS = [
   { key: 'awaiting', label: 'Awaiting approval', dot: 'bg-amber-400' },
   { key: 'approved', label: 'Done & approved',   dot: 'bg-green-500' },
 ];
+
+// How long a just-tapped card is held in its old section before it slides to the new
+// one. Stops the list reordering under the user's finger (which caused mis-taps on the
+// card that slid up). Also the duration of the tap "flash" feedback.
+const MOVE_DELAY_MS = 800;
 
 export default function Today() {
   const [date, setDate] = useState(startOfDay(new Date()));
@@ -48,23 +53,44 @@ export default function Today() {
   const progress = total === 0 ? 0 : Math.round(((done + half * 0.5) / total) * 100);
   const onToday  = isToday(date);
 
-  // Partition habits into the three tracking sections. A points-bearing habit
-  // that's done but not yet approved (or whose award hasn't synced) is awaiting;
-  // rejected points drop back to pending (needs redo); done with no points has
-  // nothing to approve, so it counts as approved.
-  const groups = { pending: [], awaiting: [], approved: [] };
-  for (const h of habits) {
+  // Which tracking section a habit belongs to. A points-bearing habit that's done but
+  // not yet approved (or whose award hasn't synced) is awaiting; rejected points drop
+  // back to pending (needs redo); done with no points has nothing to approve, so it
+  // counts as approved.
+  const sectionOf = (h) => {
     const st = getStatus(h._id, date);
     const pts = h.points || 0;
-    if (st === 'done') {
-      if (pts === 0) { groups.approved.push(h); continue; }
-      const aw = awards[h._id]?.status || 'pending';
-      if (aw === 'approved') groups.approved.push(h);
-      else if (aw === 'rejected') groups.pending.push(h);
-      else groups.awaiting.push(h);
-    } else {
-      groups.pending.push(h);
-    }
+    if (st !== 'done') return 'pending';
+    if (pts === 0) return 'approved';
+    const aw = awards[h._id]?.status || 'pending';
+    if (aw === 'approved') return 'approved';
+    if (aw === 'rejected') return 'pending';
+    return 'awaiting';
+  };
+
+  // habitId -> section to hold it in during the move-delay animation (see MOVE_DELAY_MS).
+  const [pinned, setPinned] = useState({});
+  const timersRef = useRef([]);
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
+
+  // Tap handler: cycle the status, but pin the card to its pre-tap section briefly so a
+  // completion doesn't yank the list and steal the next tap. The flash gives tap feedback.
+  const handleCycle = (habitId) => {
+    const from = sectionOf(habits.find(h => h._id === habitId));
+    cycleStatus(habitId, date);
+    // Pin to the section it was in BEFORE this tap; keep the original pin if one is
+    // already active (rapid re-taps) so the card holds steady instead of jumping.
+    setPinned(p => (habitId in p ? p : { ...p, [habitId]: from }));
+    timersRef.current.push(setTimeout(() => {
+      setPinned(p => { const n = { ...p }; delete n[habitId]; return n; });
+    }, MOVE_DELAY_MS));
+  };
+
+  // Partition into sections, honoring any active pin so cards don't jump mid-tap.
+  const groups = { pending: [], awaiting: [], approved: [] };
+  for (const h of habits) {
+    const sec = pinned[h._id] || sectionOf(h);
+    (groups[sec] || groups.pending).push(h);
   }
 
   const message =
@@ -176,10 +202,11 @@ export default function Today() {
                       key={habit._id}
                       habit={habit}
                       status={getStatus(habit._id, date)}
-                      onCycle={() => cycleStatus(habit._id, date)}
+                      onCycle={() => handleCycle(habit._id)}
                       value={getValue(habit._id, date)}
                       onValueChange={(val) => setLogValue(habit._id, date, val)}
                       award={awards[habit._id]}
+                      flash={!!pinned[habit._id]}
                     />
                   ))}
                 </div>

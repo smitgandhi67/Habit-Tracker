@@ -66,7 +66,7 @@ const AWARD_TEXT = {
   rejected: { color: 'text-slate-400',  label: 'points not approved' },
 };
 
-export default function HabitCard({ habit, status, onCycle, value, onValueChange, award }) {
+export default function HabitCard({ habit, status, onCycle, value, onValueChange, award, flash }) {
   const s = STATUS[status] || STATUS.not_started;
   const hasConfig = !!habit.config?.type;
   const pts = habit.points || 0;
@@ -75,7 +75,7 @@ export default function HabitCard({ habit, status, onCycle, value, onValueChange
   const aw = awardState ? AWARD_TEXT[awardState] : null;
 
   return (
-    <div className={`w-full rounded-2xl p-4 shadow-sm border border-slate-100 transition-all duration-200 ${s.cardBg}`}>
+    <div className={`w-full rounded-2xl p-4 shadow-sm border transition-all duration-200 ${s.cardBg} ${flash ? 'border-violet-300 ring-2 ring-violet-200' : 'border-slate-100'}`}>
       <button
         onClick={onCycle}
         className="w-full flex items-center gap-4 active:scale-[0.97] transition-transform cursor-pointer"
@@ -93,7 +93,7 @@ export default function HabitCard({ habit, status, onCycle, value, onValueChange
           <p className={`text-xs mt-0.5 font-medium ${s.textColor}`}>{s.label}</p>
           {aw && <p className={`text-xs mt-0.5 font-medium ${aw.color}`}>⭐ {pts} · {aw.label}</p>}
         </div>
-        <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-lg transition-all duration-200 shrink-0 ${s.ring}`}>
+        <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-lg transition-all duration-200 shrink-0 ${s.ring} ${flash ? 'scale-110' : ''}`}>
           {s.icon ?? <span className="w-2 h-2 rounded-full bg-slate-300" />}
         </div>
       </button>
