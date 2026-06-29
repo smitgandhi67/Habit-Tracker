@@ -8,6 +8,7 @@ const { listInstruments, getInstrument } = require('../capabilities/instruments'
 const { scoreInstrument, gapReport } = require('../parenting/scoring');
 const { computeTargets } = require('../capabilities/targets');
 const { buildDomainRollup } = require('../capabilities/rollup');
+const { buildDashboard } = require('../capabilities/dashboard');
 const CapabilityAttempt = require('../models/CapabilityAttempt');
 const CapabilityActivity = require('../models/CapabilityActivity');
 const CapabilityActivityLog = require('../models/CapabilityActivityLog');
@@ -202,6 +203,23 @@ router.get('/rollup', async (req, res, next) => {
     const opts = {};
     if (typeof since === 'string' && YMD.test(since)) opts.since = since;
     res.json(await buildDomainRollup(access.childId, opts));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/capabilities/dashboard?childUserId= — the per-kid system of record
+// (radar + focus areas + cadence + cross-track snapshot). parentView is true for an
+// admin or a linked parent; a kid viewing their own profile gets the read-only view
+// with the parent-facing pieces stripped (targets, milestones, parent ratings).
+router.get('/dashboard', async (req, res, next) => {
+  try {
+    const childUserId = req.query.childUserId || req.user._id;
+    const access = await authorizeChild(req, childUserId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const parentView = isAdmin(req) || String(access.childId) !== String(req.user._id);
+    res.json(await buildDashboard(access.childId, { parentView }));
   } catch (err) {
     next(err);
   }

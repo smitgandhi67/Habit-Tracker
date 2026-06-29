@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Brain, Star, ClipboardList, Smile, Compass, Activity, HandHelping, BookOpen } from 'lucide-react';
+import { Brain, Star, ClipboardList, Smile, Compass, Activity, HandHelping, BookOpen, LayoutDashboard } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { DOMAINS as FALLBACK_DOMAINS } from '../lib/capabilities/domains';
@@ -39,6 +39,18 @@ export default function Skills() {
 
       {/* Baseline check-in entry points */}
       <div className="grid grid-cols-1 gap-2 mb-5">
+        <NavLink
+          to="/skills/dashboard"
+          className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-600 p-4 hover:bg-violet-700 transition-colors"
+        >
+          <LayoutDashboard size={20} className="text-white shrink-0" />
+          <span>
+            <span className="block text-sm font-semibold text-white">{user?.isAdmin ? 'Parent dashboard' : 'My skills profile'}</span>
+            <span className="block text-xs text-violet-100">
+              {user?.isAdmin ? 'The whole picture for each child — baseline, focus, reps, signals.' : 'Your radar, your reps, and your trophy shelf.'}
+            </span>
+          </span>
+        </NavLink>
         {user?.isAdmin && (
           <NavLink
             to="/skills/baseline/parent"
