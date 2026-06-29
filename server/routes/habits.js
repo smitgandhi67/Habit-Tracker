@@ -3,8 +3,15 @@ const router = express.Router();
 const Habit = require('../models/Habit');
 const HabitLog = require('../models/HabitLog');
 const { validateFrequency, sanitizeFrequency } = require('../utils/frequency');
+const { isDomainKey } = require('../capabilities/domains');
 
 // All routes require auth (applied in index.js)
+
+// Keep only real, de-duplicated capability-domain keys (used by the Skills rollup).
+function sanitizeDomainKeys(v) {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter(k => typeof k === 'string' && isDomainKey(k)))];
+}
 
 // GET all habits for current user (archived hidden by default)
 router.get('/', async (req, res) => {
@@ -40,13 +47,14 @@ router.put('/reorder', async (req, res) => {
 });
 
 // POST create a habit
-const ALLOWED_CREATE_FIELDS = ['name', 'emoji', 'frequency', 'config', 'order'];
+const ALLOWED_CREATE_FIELDS = ['name', 'emoji', 'frequency', 'config', 'order', 'domainKeys'];
 router.post('/', async (req, res) => {
   try {
     const payload = { userId: req.user._id };
     for (const key of ALLOWED_CREATE_FIELDS) {
       if (req.body[key] !== undefined) payload[key] = req.body[key];
     }
+    if (payload.domainKeys !== undefined) payload.domainKeys = sanitizeDomainKeys(payload.domainKeys);
     if (payload.frequency !== undefined) {
       const err = validateFrequency(payload.frequency);
       if (err) return res.status(400).json({ error: err });
@@ -61,13 +69,14 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update a habit (only if owned by user; archivedAt managed via DELETE/unarchive only)
-const ALLOWED_UPDATE_FIELDS = ['name', 'emoji', 'frequency', 'config', 'order'];
+const ALLOWED_UPDATE_FIELDS = ['name', 'emoji', 'frequency', 'config', 'order', 'domainKeys'];
 router.put('/:id', async (req, res) => {
   try {
     const update = {};
     for (const key of ALLOWED_UPDATE_FIELDS) {
       if (req.body[key] !== undefined) update[key] = req.body[key];
     }
+    if (update.domainKeys !== undefined) update.domainKeys = sanitizeDomainKeys(update.domainKeys);
     if (update.frequency !== undefined) {
       const err = validateFrequency(update.frequency);
       if (err) return res.status(400).json({ error: err });

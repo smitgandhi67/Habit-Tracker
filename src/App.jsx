@@ -25,6 +25,7 @@ import SkillsBaselineParentQuiz from './pages/SkillsBaselineParentQuiz';
 import SkillsBaselineKidQuiz from './pages/SkillsBaselineKidQuiz';
 import SkillsBaselineResult from './pages/SkillsBaselineResult';
 import SkillsLibrary from './pages/SkillsLibrary';
+import SkillsTracker from './pages/SkillsTracker';
 import Trophies from './pages/Trophies';
 import JourneyAdmin from './pages/JourneyAdmin';
 import PointsHistory from './pages/PointsHistory';
@@ -68,6 +69,7 @@ function AppInner() {
                   <Route path="/skills/baseline/kid" element={<SkillsBaselineKidQuiz />} />
                   <Route path="/skills/result/:id" element={<SkillsBaselineResult />} />
                   <Route path="/skills/library" element={<SkillsLibrary />} />
+                  <Route path="/skills/track" element={<SkillsTracker />} />
                   <Route path="/trophies" element={<Trophies />} />
                   <Route path="/journey/admin" element={<JourneyAdmin />} />
                   <Route path="/math/history" element={<PointsHistory />} />

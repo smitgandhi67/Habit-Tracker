@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Brain, Star, ClipboardList, Smile, Compass } from 'lucide-react';
+import { Brain, Star, ClipboardList, Smile, Compass, Activity } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { DOMAINS as FALLBACK_DOMAINS } from '../lib/capabilities/domains';
@@ -69,6 +69,16 @@ export default function Skills() {
           <span>
             <span className="block text-sm font-semibold text-slate-800">Activity library</span>
             <span className="block text-xs text-slate-500">Evidence-based activities, each with how to run it.</span>
+          </span>
+        </NavLink>
+        <NavLink
+          to="/skills/track"
+          className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 hover:bg-emerald-100 transition-colors"
+        >
+          <Activity size={20} className="text-emerald-600 shrink-0" />
+          <span>
+            <span className="block text-sm font-semibold text-emerald-800">Activity tracker</span>
+            <span className="block text-xs text-emerald-600/80">Log reps and watch them roll up per domain across the app.</span>
           </span>
         </NavLink>
       </div>

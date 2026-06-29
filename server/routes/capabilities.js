@@ -7,11 +7,28 @@ const { CITATIONS, citationsForDomain, getCitation } = require('../capabilities/
 const { listInstruments, getInstrument } = require('../capabilities/instruments');
 const { scoreInstrument, gapReport } = require('../parenting/scoring');
 const { computeTargets } = require('../capabilities/targets');
+const { buildDomainRollup } = require('../capabilities/rollup');
 const CapabilityAttempt = require('../models/CapabilityAttempt');
 const CapabilityActivity = require('../models/CapabilityActivity');
+const CapabilityActivityLog = require('../models/CapabilityActivityLog');
 const ParentingLink = require('../models/ParentingLink');
 const User = require('../models/User');
 const { isAdmin, requireAdmin } = require('../utils/auth');
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+// Authorize the caller to read/write a given child's data: the child themselves,
+// an admin, or a linked parent. Returns { childId } or { error, status }.
+async function authorizeChild(req, childUserId) {
+  if (!mongoose.Types.ObjectId.isValid(childUserId)) {
+    return { error: 'valid childUserId required', status: 400 };
+  }
+  if (String(childUserId) === String(req.user._id)) return { childId: childUserId };
+  if (isAdmin(req)) return { childId: childUserId };
+  const link = await ParentingLink.findOne({ parentUserId: req.user._id, childUserId });
+  if (!link) return { error: 'No link to this child', status: 403 };
+  return { childId: childUserId };
+}
 
 // Capabilities ("Skills") module API. Day 1: read-only registries. Day 2: the
 // capability baseline — parent + kid questionnaires on the shared instrument
@@ -81,6 +98,110 @@ router.get('/activities', async (req, res, next) => {
     });
 
     res.json({ activities: docs.map(serializeActivity) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- activity tracking + domain rollup (Day 5) -----------------------------
+
+function serializeLog(l) {
+  return {
+    _id: l._id,
+    activitySlug: l.activitySlug,
+    title: l.title,
+    domainKeys: l.domainKeys || [],
+    date: l.date,
+    note: l.note || '',
+    subjectUserId: l.subjectUserId,
+    createdAt: l.createdAt,
+  };
+}
+
+// POST /api/capabilities/activities/log — record one run of a 'do' activity for a
+// child. Snapshots the activity's title + domains onto the log (rollup needs no
+// join). Body: { activitySlug, subjectUserId?, date?, note? }. subjectUserId
+// defaults to self (kid logging own); a parent/admin may log for a linked child.
+router.post('/activities/log', async (req, res, next) => {
+  try {
+    const { activitySlug, subjectUserId, date, note } = req.body || {};
+    if (typeof activitySlug !== 'string' || !activitySlug) {
+      return res.status(400).json({ error: 'activitySlug is required' });
+    }
+    const subject = subjectUserId || req.user._id;
+    const access = await authorizeChild(req, subject);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const activity = await CapabilityActivity.findOne({ slug: activitySlug, archivedAt: null }).lean();
+    if (!activity) return res.status(404).json({ error: 'Unknown activity' });
+    if (activity.kind !== 'do') return res.status(400).json({ error: 'Only "do" activities can be logged' });
+
+    const day = (typeof date === 'string' && YMD.test(date)) ? date : new Date().toISOString().slice(0, 10);
+
+    const log = await CapabilityActivityLog.create({
+      userId: req.user._id,
+      subjectUserId: access.childId,
+      activitySlug: activity.slug,
+      title: activity.title,
+      domainKeys: activity.domainKeys || [],
+      date: day,
+      note: typeof note === 'string' ? note.slice(0, 280) : '',
+    });
+    res.status(201).json(serializeLog(log));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/capabilities/activities/log?childUserId=&limit= — recent reps for a
+// child (defaults to self). Newest first.
+router.get('/activities/log', async (req, res, next) => {
+  try {
+    const childUserId = req.query.childUserId || req.user._id;
+    const access = await authorizeChild(req, childUserId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const logs = await CapabilityActivityLog.find({ subjectUserId: access.childId })
+      .sort({ date: -1, createdAt: -1 }).limit(limit).lean();
+    res.json({ logs: logs.map(serializeLog) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/capabilities/activities/log/:id — remove a mistaken rep. The logger
+// who created it, or an admin, may delete.
+router.delete('/activities/log/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const log = await CapabilityActivityLog.findById(req.params.id);
+    if (!log) return res.status(404).json({ error: 'Not found' });
+    if (String(log.userId) !== String(req.user._id) && !isAdmin(req)) {
+      return res.status(403).json({ error: 'Not authorised' });
+    }
+    await log.deleteOne();
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/capabilities/rollup?childUserId=&since= — per-domain reps across every
+// track over the window (default last 90 days), plus baseline age + quarterly
+// re-assessment flag. Read-only aggregation (never writes the ledger — R7).
+router.get('/rollup', async (req, res, next) => {
+  try {
+    const childUserId = req.query.childUserId || req.user._id;
+    const access = await authorizeChild(req, childUserId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const { since } = req.query;
+    const opts = {};
+    if (typeof since === 'string' && YMD.test(since)) opts.since = since;
+    res.json(await buildDomainRollup(access.childId, opts));
   } catch (err) {
     next(err);
   }
