@@ -131,7 +131,7 @@ export default function SkillsDashboard() {
         </div>
       )}
 
-      {!data && !error ? (
+      {!data && !error && !(isAdmin && children && children.length === 0) ? (
         <div className="bg-white rounded-3xl h-48 animate-pulse border border-slate-100" />
       ) : data && (
         <div className="space-y-5">
