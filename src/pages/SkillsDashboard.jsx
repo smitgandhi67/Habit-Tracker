@@ -6,6 +6,7 @@ import { apiFetch } from '../lib/api';
 import { DOMAINS } from '../lib/capabilities/domains';
 import { getDashboard } from '../lib/capabilities/dashboard';
 import CapabilityRadar from '../components/CapabilityRadar';
+import ProgramsCard from '../components/ProgramsCard';
 
 const PARENT_COLOR = '#7c3aed';
 const KID_COLOR = '#0ea5e9';
@@ -128,6 +129,13 @@ export default function SkillsDashboard() {
       {isAdmin && children && children.length === 0 && (
         <div className="bg-amber-50 text-amber-700 text-sm rounded-2xl p-4">
           Link a child first in the Parenting console to see their dashboard.
+        </div>
+      )}
+
+      {/* Depth Pack training programs (enroll + status). Kid view lists own programs. */}
+      {(!isAdmin || childId) && (
+        <div className="mb-3">
+          <ProgramsCard childId={isAdmin ? childId : ''} isAdmin={isAdmin} />
         </div>
       )}
 

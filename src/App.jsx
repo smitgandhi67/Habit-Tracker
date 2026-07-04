@@ -30,6 +30,7 @@ import SkillsReference from './pages/SkillsReference';
 import SkillsCoaching from './pages/SkillsCoaching';
 import SkillsDashboard from './pages/SkillsDashboard';
 import DosePlayer from './pages/DosePlayer';
+import SundayReview from './pages/SundayReview';
 import Trophies from './pages/Trophies';
 import JourneyAdmin from './pages/JourneyAdmin';
 import PointsHistory from './pages/PointsHistory';
@@ -78,6 +79,7 @@ function AppInner() {
                   <Route path="/skills/coaching" element={<SkillsCoaching />} />
                   <Route path="/skills/dashboard" element={<SkillsDashboard />} />
                   <Route path="/skills/train/:programId" element={<DosePlayer />} />
+                  <Route path="/skills/sunday" element={<SundayReview />} />
                   <Route path="/trophies" element={<Trophies />} />
                   <Route path="/journey/admin" element={<JourneyAdmin />} />
                   <Route path="/math/history" element={<PointsHistory />} />

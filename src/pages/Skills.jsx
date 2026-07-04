@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Brain, Star, ClipboardList, Smile, Compass, Activity, HandHelping, BookOpen, LayoutDashboard } from 'lucide-react';
+import { Brain, Star, ClipboardList, Smile, Compass, Activity, HandHelping, BookOpen, LayoutDashboard, CalendarCheck } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { DOMAINS as FALLBACK_DOMAINS } from '../lib/capabilities/domains';
@@ -60,6 +60,18 @@ export default function Skills() {
             <span>
               <span className="block text-sm font-semibold text-violet-800">Rate your child’s skills</span>
               <span className="block text-xs text-violet-600/80">Parent baseline — 20 quick questions across the ten domains.</span>
+            </span>
+          </NavLink>
+        )}
+        {user?.isAdmin && (
+          <NavLink
+            to="/skills/sunday"
+            className="flex items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 hover:bg-amber-100 transition-colors"
+          >
+            <CalendarCheck size={20} className="text-amber-600 shrink-0" />
+            <span>
+              <span className="block text-sm font-semibold text-amber-800">Sunday review</span>
+              <span className="block text-xs text-amber-600/80">Weekly training numbers, brag capture, week bump — 15 minutes.</span>
             </span>
           </NavLink>
         )}
