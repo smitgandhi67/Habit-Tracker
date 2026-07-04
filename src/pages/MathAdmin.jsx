@@ -156,6 +156,24 @@ export default function MathAdmin() {
     setPicked(prev => (prev.size === awards.length ? new Set() : new Set(awards.map(a => a._id))));
   }
 
+  // Group-level select: 'all' | 'some' | 'none' of the group's items are picked.
+  function groupState(g) {
+    const on = g.items.filter(i => picked.has(i._id)).length;
+    if (on === 0) return 'none';
+    return on === g.items.length ? 'all' : 'some';
+  }
+
+  // Toggle every item in a group at once. If all are picked, clear them; else
+  // select all of them.
+  function toggleGroup(g) {
+    setPicked(prev => {
+      const next = new Set(prev);
+      const allOn = g.items.every(i => next.has(i._id));
+      for (const i of g.items) allOn ? next.delete(i._id) : next.add(i._id);
+      return next;
+    });
+  }
+
   async function approveSelected() {
     const ids = [...picked];
     if (ids.length === 0) return;
@@ -299,6 +317,17 @@ export default function MathAdmin() {
                 <div key={g.key} className="rounded-2xl border border-slate-100 overflow-hidden">
                   {/* Habit + date header with the cross-kid comparison badge */}
                   <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-100">
+                    {g.items.length > 1 && (
+                      <input
+                        type="checkbox"
+                        checked={groupState(g) === 'all'}
+                        ref={el => { if (el) el.indeterminate = groupState(g) === 'some'; }}
+                        onChange={() => toggleGroup(g)}
+                        className="w-4 h-4 accent-violet-600 cursor-pointer"
+                        aria-label={`Select all for ${g.habitName}`}
+                        title="Select everyone in this section"
+                      />
+                    )}
                     <span className="text-lg select-none">{g.habitEmoji || '⭐'}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-700 truncate">{g.habitName}</p>
