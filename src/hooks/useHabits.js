@@ -211,6 +211,26 @@ export function useHabits() {
     }
   }, [logs]);
 
+  // Direct status set (Dose Player "Done" button) — same optimistic pattern as cycleStatus.
+  const setStatus = useCallback(async (habitId, date, status) => {
+    const key = format(date, 'yyyy-MM-dd');
+    const current = logs[key]?.[habitId]?.status || 'not_started';
+    if (current === status) return;
+    setLogs(prev => ({
+      ...prev,
+      [key]: { ...prev[key], [habitId]: { ...prev[key]?.[habitId], status } },
+    }));
+    try {
+      await apiFetch(`/api/logs/${habitId}`, { method: 'PUT', body: JSON.stringify({ date: key, status }) });
+    } catch {
+      setLogs(prev => ({
+        ...prev,
+        [key]: { ...prev[key], [habitId]: { ...prev[key]?.[habitId], status: current } },
+      }));
+      toast.error('Failed to save — check your connection');
+    }
+  }, [logs]);
+
   // Debounced: saves value 600ms after last change
   const setLogValue = useCallback((habitId, date, value) => {
     const key = format(date, 'yyyy-MM-dd');
@@ -271,7 +291,7 @@ export function useHabits() {
   return {
     habits, logs, loading,
     addHabit, updateHabit, deleteHabit, reorderHabits,
-    habitsForDate, getStatus, getValue, cycleStatus, setLogValue,
+    habitsForDate, getStatus, getValue, cycleStatus, setStatus, setLogValue,
     getStreak, isScheduledOn, ensureLogsForDate, hasLogsFor,
   };
 }

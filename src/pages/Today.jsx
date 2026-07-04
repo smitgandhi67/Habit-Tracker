@@ -47,6 +47,21 @@ export default function Today() {
       .catch(() => { if (!cancelled) setAwards({}); });
     return () => { cancelled = true; };
   }, [dateStr, statusSig]);
+  // Depth Pack programs (self): habitId -> programId so training habits get a ▶ link.
+  const [programByHabit, setProgramByHabit] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/capabilities/programs')
+      .then(({ programs }) => {
+        if (cancelled) return;
+        const map = {};
+        for (const p of programs) if (p.status === 'active') map[p.habitId] = p._id;
+        setProgramByHabit(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const done  = habits.filter(h => getStatus(h._id, date) === 'done').length;
   const half  = habits.filter(h => getStatus(h._id, date) === 'half_done').length;
   const total = habits.length;
@@ -207,6 +222,7 @@ export default function Today() {
                       onValueChange={(val) => setLogValue(habit._id, date, val)}
                       award={awards[habit._id]}
                       flash={!!pinned[habit._id]}
+                      trainTo={programByHabit[habit._id] ? `/skills/train/${programByHabit[habit._id]}` : null}
                     />
                   ))}
                 </div>

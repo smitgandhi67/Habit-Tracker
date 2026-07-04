@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 const STATUS = {
   not_started: { label: 'Tap to update', ring: 'border-2 border-slate-300 bg-white',     icon: null,  textColor: 'text-slate-400', cardBg: 'bg-white'     },
   done:        { label: 'Done!',          ring: 'bg-green-500 border-2 border-green-600', icon: '✓',   textColor: 'text-green-600', cardBg: 'bg-green-50'  },
@@ -66,7 +68,7 @@ const AWARD_TEXT = {
   rejected: { color: 'text-slate-400',  label: 'points not approved' },
 };
 
-export default function HabitCard({ habit, status, onCycle, value, onValueChange, award, flash }) {
+export default function HabitCard({ habit, status, onCycle, value, onValueChange, award, flash, trainTo }) {
   const s = STATUS[status] || STATUS.not_started;
   const hasConfig = !!habit.config?.type;
   const pts = habit.points || 0;
@@ -92,6 +94,12 @@ export default function HabitCard({ habit, status, onCycle, value, onValueChange
           </div>
           <p className={`text-xs mt-0.5 font-medium ${s.textColor}`}>{s.label}</p>
           {aw && <p className={`text-xs mt-0.5 font-medium ${aw.color}`}>⭐ {pts} · {aw.label}</p>}
+          {trainTo && (
+            <Link to={trainTo} onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-xs font-bold text-violet-600 mt-1 hover:underline">
+              ▶ Open today's drill
+            </Link>
+          )}
         </div>
         <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-lg transition-all duration-200 shrink-0 ${s.ring} ${flash ? 'scale-110' : ''}`}>
           {s.icon ?? <span className="w-2 h-2 rounded-full bg-slate-300" />}
