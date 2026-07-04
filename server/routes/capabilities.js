@@ -460,3 +460,4 @@ router.get('/children', requireAdmin, async (req, res, next) => {
 
 module.exports = router;
 module.exports.buildBaselineGap = buildBaselineGap;
+module.exports.authorizeChild = authorizeChild;
