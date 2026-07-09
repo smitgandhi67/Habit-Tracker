@@ -281,6 +281,72 @@ router.post('/answer/batch', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Timed drills (zigzag addition, step multiplication). Each is an infinite random
+// pool, so points are tiered per day to stop endless farming at the full rate: the
+// first N first-try-correct answers each earn the drill's tier-1 rate, and every
+// correct answer after that earns DRILL_TIER2_POINTS.
+const DRILL_TIER2_POINTS   = 1;
+const ZIGZAG_TIER1_POINTS  = 15, ZIGZAG_TIER1_LIMIT  = 20;
+const STEPMUL_TIER1_POINTS = 10, STEPMUL_TIER1_LIMIT = 20;
+const isZigzagOperand   = (v) => Number.isInteger(v) && v >= 100 && v <= 999;
+const isStepmulTwoDigit = (v) => Number.isInteger(v) && v >= 26 && v <= 99; // "two-digit >25"
+const isStepmulOneDigit = (v) => Number.isInteger(v) && v >= 2 && v <= 9;   // non-trivial one-digit
+
+// Record one drill attempt and credit the tiered points on a first-try-correct answer.
+// `counterField` is the per-day count of correct answers for this drill (drives the
+// tier). The attempt also feeds the shared daily stats so drills show in the week chart
+// + points ledger, same as fact practice. Returns the awarded points + wallet summary.
+async function creditDrill(userId, date, correct, counterField, tier1Points, tier1Limit) {
+  const daily = await MathDailyStat.findOne({ userId, date }).select(counterField).lean();
+  const priorCorrect = daily?.[counterField] || 0;
+  const award = correct
+    ? (priorCorrect < tier1Limit ? tier1Points : DRILL_TIER2_POINTS)
+    : 0;
+
+  await MathDailyStat.findOneAndUpdate(
+    { userId, date },
+    { $inc: { attempted: 1, correct: correct ? 1 : 0, points: award, [counterField]: correct ? 1 : 0 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  const reward = award > 0
+    ? await MathReward.findOneAndUpdate({ userId }, { $inc: { pointsEarned: award } }, { upsert: true, new: true, setDefaultsOnInsert: true })
+    : await getReward(userId);
+
+  return { award, reward: rewardSummary(reward) };
+}
+
+// POST /api/math/zigzag/answer — body { a, b, c, answer, date }. 3-digit + 3-digit +
+// 3-digit. Server re-grades a+b+c (never trusts the client). One request per question
+// (low volume: 10–20s each), so no batching.
+router.post('/zigzag/answer', async (req, res, next) => {
+  try {
+    const { a, b, c, answer, date } = req.body || {};
+    if (!isZigzagOperand(a) || !isZigzagOperand(b) || !isZigzagOperand(c) ||
+        !Number.isFinite(answer) || !date || !ISO_DATE.test(date)) {
+      return res.status(400).json({ error: 'need three 3-digit operands, a numeric answer, and a valid date' });
+    }
+    const correct = a + b + c === answer;
+    const { award, reward } = await creditDrill(req.user._id, date, correct, 'zigzag', ZIGZAG_TIER1_POINTS, ZIGZAG_TIER1_LIMIT);
+    res.json({ correct, awarded: award, reward });
+  } catch (err) { next(err); }
+});
+
+// POST /api/math/stepmul/answer — body { a, b, answer, date }. Two-digit (>25) ×
+// one-digit. Server re-grades a*b (never trusts the client).
+router.post('/stepmul/answer', async (req, res, next) => {
+  try {
+    const { a, b, answer, date } = req.body || {};
+    if (!isStepmulTwoDigit(a) || !isStepmulOneDigit(b) ||
+        !Number.isFinite(answer) || !date || !ISO_DATE.test(date)) {
+      return res.status(400).json({ error: 'need a two-digit (>25) operand, a one-digit operand, a numeric answer, and a valid date' });
+    }
+    const correct = a * b === answer;
+    const { award, reward } = await creditDrill(req.user._id, date, correct, 'stepmul', STEPMUL_TIER1_POINTS, STEPMUL_TIER1_LIMIT);
+    res.json({ correct, awarded: award, reward });
+  } catch (err) { next(err); }
+});
+
 // POST /api/math/redeem — body { rewardKey, qty }. Spends points from the balance.
 router.post('/redeem', async (req, res, next) => {
   try {

@@ -11,6 +11,8 @@ const mathDailyStatSchema = new mongoose.Schema({
   attempted: { type: Number, default: 0 },
   correct:   { type: Number, default: 0 },
   points:    { type: Number, default: 0 },
+  zigzag:    { type: Number, default: 0 }, // first-try-correct zigzag answers today (drives the 15→1 point tier)
+  stepmul:   { type: Number, default: 0 }, // first-try-correct step-multiplication answers today (drives the 10→1 point tier)
 });
 
 mathDailyStatSchema.index({ userId: 1, date: 1 }, { unique: true });

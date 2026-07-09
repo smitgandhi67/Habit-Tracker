@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { format, subDays } from 'date-fns';
 import { Link } from 'react-router-dom';
-import { Check, X, Tv, Tent, Trophy, Sparkles, History, Clock } from 'lucide-react';
+import { Check, X, Tv, Tent, Trophy, Sparkles, History, Clock, Zap, Asterisk } from 'lucide-react';
 import { useMath } from '../hooks/useMath';
 import { choicesForQuestion } from '../lib/mathFacts';
 import { affordableQty, pointsForOp } from '../lib/mathRewards';
@@ -126,12 +126,26 @@ export default function MathPage() {
           <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
             <Sparkles className="text-violet-500" /> Math Practice
           </h1>
-          <Link
-            to="/math/history"
-            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
-          >
-            <History size={16} /> History
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0">
+            <Link
+              to="/math/zigzag"
+              className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700"
+            >
+              <Zap size={16} /> Zigzag
+            </Link>
+            <Link
+              to="/math/stepmul"
+              className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700"
+            >
+              <Asterisk size={16} /> Step ×
+            </Link>
+            <Link
+              to="/math/history"
+              className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700"
+            >
+              <History size={16} /> History
+            </Link>
+          </div>
         </div>
         <p className="text-slate-400 text-sm mt-1">
           {caughtUp

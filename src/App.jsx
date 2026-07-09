@@ -18,6 +18,8 @@ import Meals from './pages/Meals';
 import MealsLibrary from './pages/MealsLibrary';
 import MealsEditor from './pages/MealsEditor';
 import MathPage from './pages/Math';
+import Zigzag from './pages/Zigzag';
+import StepMul from './pages/StepMul';
 import MathAdmin from './pages/MathAdmin';
 import Build from './pages/Build';
 import Skills from './pages/Skills';
@@ -68,6 +70,8 @@ function AppInner() {
                   <Route path="/meals/library" element={<MealsLibrary />} />
                   <Route path="/meals/:id/edit" element={<MealsEditor />} />
                   <Route path="/math" element={<MathPage />} />
+                  <Route path="/math/zigzag" element={<Zigzag />} />
+                  <Route path="/math/stepmul" element={<StepMul />} />
                   <Route path="/build" element={<Build />} />
                   <Route path="/skills" element={<Skills />} />
                   <Route path="/skills/baseline/parent" element={<SkillsBaselineParentQuiz />} />
