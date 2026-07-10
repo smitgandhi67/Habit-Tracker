@@ -126,26 +126,12 @@ export default function MathPage() {
           <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
             <Sparkles className="text-violet-500" /> Math Practice
           </h1>
-          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-            <Link
-              to="/math/zigzag"
-              className="flex items-center justify-center gap-1 rounded-xl py-2 px-3 text-sm font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
-            >
-              <Zap size={16} /> Zigzag
-            </Link>
-            <Link
-              to="/math/stepmul"
-              className="flex items-center justify-center gap-1 rounded-xl py-2 px-3 text-sm font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
-            >
-              <Asterisk size={16} /> Step ×
-            </Link>
-            <Link
-              to="/math/history"
-              className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700"
-            >
-              <History size={16} /> History
-            </Link>
-          </div>
+          <Link
+            to="/math/history"
+            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
+          >
+            <History size={16} /> History
+          </Link>
         </div>
         <p className="text-slate-400 text-sm mt-1">
           {caughtUp
@@ -166,6 +152,18 @@ export default function MathPage() {
               <span className="text-lg leading-none">{o.symbol}</span> {o.label}
             </button>
           ))}
+          <Link
+            to="/math/zigzag"
+            className="flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+          >
+            <Zap size={16} /> Zigzag
+          </Link>
+          <Link
+            to="/math/stepmul"
+            className="flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+          >
+            <Asterisk size={16} /> Step ×
+          </Link>
         </div>
       </header>
 
