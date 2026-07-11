@@ -8,24 +8,41 @@ import { affordableQty, pointsForOp } from '../lib/mathRewards';
 import { TYPES, OP_KEYS, getType, gradeAnswer } from '../lib/questionTypes';
 import { timerSecondsFor } from '../lib/mathTimer';
 import { useAuth } from '../context/AuthContext';
-import { apiFetch } from '../lib/api';
+import { useMathProgress } from '../hooks/useMathProgress';
+import toast from 'react-hot-toast';
+import MathStatsHeader from '../components/MathStatsHeader';
+import OpGrid from '../components/OpGrid';
+import ComboCelebrate from '../components/ComboCelebrate';
 
 // Operation toggle, built from the question-type registry so a new formula appears
 // here automatically (key/symbol/label come from the descriptor).
 const OPS = OP_KEYS.map(k => ({ key: k, symbol: TYPES[k].symbol, label: TYPES[k].label }));
 
+// Correct-answers-per-day goal that drives the ring + streak. Grade-scaled so younger
+// kids get a reachable target.
+function dailyGoalFor(grade) { return grade === 2 || grade === 3 ? 15 : 25; }
+
+// Combo counts at which we throw a bigger celebration + a toast.
+const COMBO_MILESTONES = new Set([5, 10, 20, 30, 50]);
+
 export default function MathPage() {
   const { user } = useAuth();
   const {
-    loading, question, session, reward, rewards, sleepoverPct,
-    dueCount, caughtUp, op, setOp, submitAnswer, advance, redeem, flush,
+    loading, question, today, session, reward, rewards, sleepoverPct,
+    dueCount, perOpStats, caughtUp, op, setOp, submitAnswer, advance, redeem, flush,
   } = useMath();
 
   const [typed, setTyped] = useState('');
   const [phase, setPhase] = useState('input'); // 'input' | 'wrong' | 'right'
   const [stopped, setStopped] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(null);
+  const [combo, setCombo] = useState(0);       // consecutive first-try-correct this session
+  const [burst, setBurst] = useState(0);       // bump to re-fire the confetti overlay
+  const [bigBurst, setBigBurst] = useState(false);
   const inputRef = useRef(null);
+
+  // Switching operation starts a fresh combo — a run is within one mode.
+  useEffect(() => { setCombo(0); }, [op]);
 
   const choices = useMemo(() => choicesForQuestion(question), [question]);
   const timerTotal = timerSecondsFor(user?.email);
@@ -47,6 +64,7 @@ export default function MathPage() {
       if (remMs <= 0) {
         clearInterval(id); // stop before the state change re-runs the effect (no double-submit)
         submitAnswer(-1, true); // sentinel: never equals an answer → logged as incorrect
+        setCombo(0); // running out of time breaks the combo
         setPhase('wrong');
         inputRef.current?.blur(); // surface the choice buttons
         return;
@@ -67,19 +85,41 @@ export default function MathPage() {
   const opLabel = OPS.find(o => o.key === op)?.label || 'Math';
   // Fixed prefix shown before the input for decimal types (e.g. "0." for fractions).
   const answerPrefix = question ? (getType(question.op).answerPrefix?.(question.a, question.b) || '') : '';
+  const goal = dailyGoalFor(user?.grade);
+  const totalPotential = perOpStats.reduce((sum, s) => sum + s.potential, 0);
 
   function grade(value) {
     if (phase !== 'input' || value === '' || !question) return;
     const res = submitAnswer(value, true); // graded locally — instant, no network wait
     setPhase(res.correct ? 'right' : 'wrong');
     if (res.correct) {
+      celebrateCorrect();
       // Refocus synchronously inside this submit gesture so the numpad stays open
       // through the 500ms "Correct!" pause and into the next question (no re-tap).
       inputRef.current?.focus();
       setTimeout(() => { setTyped(''); setPhase('input'); advance(); inputRef.current?.focus(); }, 500);
     } else {
+      setCombo(0); // wrong answer breaks the combo
       // Wrong: drop the keyboard so the multiple-choice buttons are visible.
       inputRef.current?.blur();
+    }
+  }
+
+  // Advance the session combo, fire confetti, and surface milestone / personal-best
+  // toasts. Best combo is remembered per kid in localStorage.
+  function celebrateCorrect() {
+    const nc = combo + 1;
+    setCombo(nc);
+    const milestone = COMBO_MILESTONES.has(nc);
+    setBigBurst(milestone);
+    setBurst(b => b + 1);
+    if (milestone) toast(`${nc} in a row!`, { icon: '🔥' });
+
+    const bestKey = `math:combo:best:${user?._id || 'anon'}`;
+    const best = Number(localStorage.getItem(bestKey) || 0);
+    if (nc > best) {
+      localStorage.setItem(bestKey, String(nc));
+      if (nc >= 5 && !milestone) toast(`New best: ${nc} in a row!`, { icon: '🏆' });
     }
   }
 
@@ -133,45 +173,58 @@ export default function MathPage() {
             <History size={16} /> History
           </Link>
         </div>
-        <p className="text-slate-400 text-sm mt-1">
-          {caughtUp
-            ? `${opLabel}: all caught up! New facts coming soon 🎉`
-            : `${dueCount} ${dueCount === 1 ? 'fact' : 'facts'} due · ${opLabel} practice`}
-        </p>
 
-        {/* Operation toggle — grid so 6+ question types wrap cleanly on mobile. */}
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {OPS.map(o => (
-            <button
-              key={o.key}
-              onClick={() => setOp(o.key)}
-              className={`flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold transition-colors ${
-                op === o.key ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              }`}
-            >
-              <span className="text-lg leading-none">{o.symbol}</span> {o.label}
-            </button>
-          ))}
+        {/* Streak + daily goal ring + rank */}
+        <MathStatsHeader todayCorrect={today.correct} goal={goal} lifetimePoints={reward.pointsEarned} />
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-slate-400 text-sm">
+            {caughtUp
+              ? `${opLabel}: all caught up! New facts coming soon 🎉`
+              : `${dueCount} ${dueCount === 1 ? 'fact' : 'facts'} due · ${opLabel} practice`}
+          </p>
+          {totalPotential > 0 && (
+            <span className="shrink-0 text-xs font-bold text-violet-600 bg-violet-50 rounded-full px-2 py-1">
+              ⭐{totalPotential} to earn
+            </span>
+          )}
+        </div>
+
+        {/* Operation picker with per-mode mastery + points-left; the timed drills sit
+            in the same grid as their own special tiles. */}
+        <OpGrid ops={OPS} perOpStats={perOpStats} op={op} setOp={setOp}>
           <Link
             to="/math/zigzag"
-            className="flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+            className="rounded-xl p-2.5 flex flex-col justify-center gap-1 text-white bg-gradient-to-br from-violet-500 to-fuchsia-500 hover:opacity-90 transition"
           >
-            <Zap size={16} /> Zigzag
+            <span className="flex items-center gap-1 font-bold text-sm"><Zap size={16} /> Zigzag</span>
+            <span className="text-[10px] text-white/85">timed · 3-digit add</span>
           </Link>
           <Link
             to="/math/stepmul"
-            className="flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+            className="rounded-xl p-2.5 flex flex-col justify-center gap-1 text-white bg-gradient-to-br from-sky-500 to-cyan-500 hover:opacity-90 transition"
           >
-            <Asterisk size={16} /> Step ×
+            <span className="flex items-center gap-1 font-bold text-sm"><Asterisk size={16} /> Step ×</span>
+            <span className="text-[10px] text-white/85">timed · 2-digit × 1</span>
           </Link>
-        </div>
+        </OpGrid>
       </header>
 
       {/* Practice card */}
       {!stopped ? (
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4">
+        <div className="relative overflow-hidden bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4">
+          <ComboCelebrate burstKey={burst} big={bigBurst} />
           {question ? (
             <>
+              {combo >= 2 && phase !== 'wrong' && (
+                <div className="flex justify-center mb-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-extrabold ${
+                    combo >= 10 ? 'bg-amber-100 text-amber-700' : combo >= 5 ? 'bg-orange-100 text-orange-600' : 'bg-violet-100 text-violet-600'
+                  }`}>
+                    🔥 {combo} in a row!
+                  </span>
+                </div>
+              )}
               <div className="text-center">
                 <div className="text-6xl font-extrabold text-slate-800 tracking-tight tabular-nums">
                   {question.display}
@@ -355,16 +408,9 @@ export default function MathPage() {
   );
 }
 
-// This-week + recent daily counts. Self-contained fetch so the practice hook stays lean.
+// This-week + recent daily counts. Shares the streak card's /progress fetch.
 function WeekProgress() {
-  const [days, setDays] = useState([]);
-  const today = format(new Date(), 'yyyy-MM-dd');
-
-  useEffect(() => {
-    apiFetch(`/api/math/progress?date=${today}&weeks=8`)
-      .then(d => setDays(d.days || []))
-      .catch(() => setDays([]));
-  }, [today]);
+  const { days } = useMathProgress(8);
 
   // Build last 7 days (oldest → newest) for the bar row.
   const byDate = new Map(days.map(d => [d.date, d]));

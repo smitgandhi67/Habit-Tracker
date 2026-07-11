@@ -231,6 +231,24 @@ export function useMath() {
   const dueSet = new Set(suppressedFor(op));
   const dueCount = generateFacts(op, maxForOp(op)).filter(f => !dueSet.has(f.key)).length;
 
+  // Per-operation progress for the toggle grid: mastery (mastered/total facts within
+  // this kid's grade cap) and the points still on the table (due facts × the kid's
+  // weighted per-answer payout, promo included). Recomputed each render so mastery and
+  // remaining points tick down live as facts are earned.
+  const perOpStats = OP_KEYS.map(o => {
+    const facts = generateFacts(o, maxForOp(o));
+    const total = facts.length;
+    const sup = new Set(suppressedFor(o));
+    const due = facts.filter(f => !sup.has(f.key)).length;
+    const mastered = total - due;
+    const perPts = effectivePoints(pointsForOp(o), user);
+    return {
+      op: o, total, due, mastered,
+      masteryPct: total ? Math.round((mastered / total) * 100) : 0,
+      perPts, potential: due * perPts,
+    };
+  });
+
   return {
     loading,
     question,
@@ -240,6 +258,7 @@ export function useMath() {
     rewards,
     sleepoverPct: sleepover,
     dueCount,
+    perOpStats,
     caughtUp: question === null,
     op,
     setOp,
