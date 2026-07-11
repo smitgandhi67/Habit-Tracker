@@ -11,9 +11,21 @@ function timerFor(grade) {
 }
 
 const rand3 = () => 100 + Math.floor(Math.random() * 900); // 100..999
+const rand2 = () => 10 + Math.floor(Math.random() * 90);   // 10..99
 
-// A fresh zigzag question: three 3-digit operands and their sum.
-function makeQuestion() {
+// Grades 2-3 add two 2-digit numbers; grades 4-5 (and unset grades) add three
+// 3-digit numbers.
+function isLowerGrade(grade) {
+  return grade === 2 || grade === 3;
+}
+
+// A fresh zigzag question and its sum. `c` is null for the two-operand (grade 2-3)
+// form so the rest of the page can branch on its presence.
+function makeQuestion(grade) {
+  if (isLowerGrade(grade)) {
+    const a = rand2(), b = rand2();
+    return { a, b, c: null, sum: a + b, key: `${a}+${b}` };
+  }
   const a = rand3(), b = rand3(), c = rand3();
   return { a, b, c, sum: a + b + c, key: `${a}+${b}+${c}` };
 }
@@ -47,13 +59,14 @@ export default function Zigzag() {
   const timerTotal = timerFor(user?.grade);
   const dateStr = format(new Date(), 'yyyy-MM-dd');
 
-  const [question, setQuestion] = useState(() => makeQuestion());
+  const [question, setQuestion] = useState(() => makeQuestion(user?.grade));
   const [typed, setTyped] = useState('');
   const [phase, setPhase] = useState('input'); // 'input' | 'right' | 'wrong'
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [session, setSession] = useState({ attempted: 0, correct: 0, points: 0 });
   const [balance, setBalance] = useState(null);
   const inputRef = useRef(null);
+  const answeredRef = useRef(false);
 
   const choices = useMemo(() => makeChoices(question.sum), [question]);
 
@@ -67,10 +80,17 @@ export default function Zigzag() {
   }, [dateStr]);
 
   const newQuestion = useCallback(() => {
-    setQuestion(makeQuestion());
+    setQuestion(makeQuestion(user?.grade));
     setTyped('');
     setPhase('input');
-  }, []);
+  }, [user?.grade]);
+
+  // The auth context resolves the user (and grade) asynchronously after mount, so the
+  // very first question may have been generated before the grade was known. Refresh it
+  // once the grade loads, but only before the kid has answered anything.
+  useEffect(() => {
+    if (!answeredRef.current) setQuestion(makeQuestion(user?.grade));
+  }, [user?.grade]);
 
   useEffect(() => {
     if (phase === 'input') inputRef.current?.focus();
@@ -87,6 +107,7 @@ export default function Zigzag() {
       const remMs = deadline - Date.now();
       if (remMs <= 0) {
         clearInterval(id); // stop before the state change re-runs the effect
+        answeredRef.current = true;
         setSession(s => ({ ...s, attempted: s.attempted + 1 }));
         postZigzag(question, -1, dateStr)
           .then(res => { if (typeof res?.reward?.balance === 'number') setBalance(res.reward.balance); })
@@ -104,6 +125,7 @@ export default function Zigzag() {
   // Grade the typed answer: instant local feedback for the phase, server credits.
   function grade(value) {
     if (phase !== 'input' || value === '' || !question) return;
+    answeredRef.current = true;
     const correct = Number(value) === question.sum;
     setSession(s => ({ attempted: s.attempted + 1, correct: s.correct + (correct ? 1 : 0), points: s.points }));
     setPhase(correct ? 'right' : 'wrong');
@@ -157,7 +179,7 @@ export default function Zigzag() {
           </Link>
         </div>
         <p className="text-slate-400 text-sm mt-1">
-          Add three 3-digit numbers · {timerTotal}s each · first 20/day earn ⭐15
+          {question.c != null ? 'Add three 3-digit numbers' : 'Add two 2-digit numbers'} · {timerTotal}s each · first 20/day earn ⭐15
         </p>
       </header>
 
@@ -167,10 +189,10 @@ export default function Zigzag() {
         <div className="flex justify-center">
           <div className="text-5xl font-extrabold text-slate-800 tracking-tight tabular-nums text-right leading-tight">
             <div>{question.a}</div>
-            <div>{question.b}</div>
+            {question.c != null && <div>{question.b}</div>}
             <div className="flex items-center justify-end gap-3">
               <span className="text-3xl text-violet-500">+</span>
-              <span>{question.c}</span>
+              <span>{question.c != null ? question.c : question.b}</span>
             </div>
             <div className="mt-2 border-t-4 border-slate-300" />
           </div>

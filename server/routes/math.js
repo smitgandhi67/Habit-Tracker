@@ -288,7 +288,8 @@ router.post('/answer/batch', async (req, res, next) => {
 const DRILL_TIER2_POINTS   = 1;
 const ZIGZAG_TIER1_POINTS  = 15, ZIGZAG_TIER1_LIMIT  = 20;
 const STEPMUL_TIER1_POINTS = 10, STEPMUL_TIER1_LIMIT = 20;
-const isZigzagOperand   = (v) => Number.isInteger(v) && v >= 100 && v <= 999;
+const isZigzagOperand3  = (v) => Number.isInteger(v) && v >= 100 && v <= 999;
+const isZigzagOperand2  = (v) => Number.isInteger(v) && v >= 10 && v <= 99; // grades 2-3
 const isStepmulTwoDigit = (v) => Number.isInteger(v) && v >= 26 && v <= 99; // "two-digit >25"
 const isStepmulOneDigit = (v) => Number.isInteger(v) && v >= 2 && v <= 9;   // non-trivial one-digit
 
@@ -316,17 +317,28 @@ async function creditDrill(userId, date, correct, counterField, tier1Points, tie
   return { award, reward: rewardSummary(reward) };
 }
 
-// POST /api/math/zigzag/answer — body { a, b, c, answer, date }. 3-digit + 3-digit +
-// 3-digit. Server re-grades a+b+c (never trusts the client). One request per question
+// POST /api/math/zigzag/answer — body { a, b, c, answer, date }. Grades 2-3: two
+// 2-digit operands, c omitted/null. Grades 4-5 (and unset): three 3-digit operands.
+// Server re-grades a+b(+c) (never trusts the client). One request per question
 // (low volume: 10–20s each), so no batching.
 router.post('/zigzag/answer', async (req, res, next) => {
   try {
     const { a, b, c, answer, date } = req.body || {};
-    if (!isZigzagOperand(a) || !isZigzagOperand(b) || !isZigzagOperand(c) ||
-        !Number.isFinite(answer) || !date || !ISO_DATE.test(date)) {
-      return res.status(400).json({ error: 'need three 3-digit operands, a numeric answer, and a valid date' });
+    if (!Number.isFinite(answer) || !date || !ISO_DATE.test(date)) {
+      return res.status(400).json({ error: 'need operands, a numeric answer, and a valid date' });
     }
-    const correct = a + b + c === answer;
+    let correct;
+    if (c === null || c === undefined) {
+      if (!isZigzagOperand2(a) || !isZigzagOperand2(b)) {
+        return res.status(400).json({ error: 'need two 2-digit operands, a numeric answer, and a valid date' });
+      }
+      correct = a + b === answer;
+    } else {
+      if (!isZigzagOperand3(a) || !isZigzagOperand3(b) || !isZigzagOperand3(c)) {
+        return res.status(400).json({ error: 'need three 3-digit operands, a numeric answer, and a valid date' });
+      }
+      correct = a + b + c === answer;
+    }
     const { award, reward } = await creditDrill(req.user._id, date, correct, 'zigzag', ZIGZAG_TIER1_POINTS, ZIGZAG_TIER1_LIMIT);
     res.json({ correct, awarded: award, reward });
   } catch (err) { next(err); }
