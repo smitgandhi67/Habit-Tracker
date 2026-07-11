@@ -198,7 +198,7 @@ export default function MathPage() {
             className="rounded-xl p-2.5 flex flex-col justify-center gap-1 text-white bg-gradient-to-br from-violet-500 to-fuchsia-500 hover:opacity-90 transition"
           >
             <span className="flex items-center gap-1 font-bold text-sm"><Zap size={16} /> Zigzag</span>
-            <span className="text-[10px] text-white/85">timed · 3-digit add</span>
+            <span className="text-[10px] text-white/85">timed · {user?.grade === 2 || user?.grade === 3 ? '2-digit add' : '3-digit add'}</span>
           </Link>
           <Link
             to="/math/stepmul"
