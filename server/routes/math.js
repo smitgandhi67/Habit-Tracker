@@ -423,22 +423,19 @@ router.get('/awards', async (req, res, next) => {
 
 // ---- admin routes ---------------------------------------------------------
 
-// GET /api/math/parent/children — the signed-in parent's approved-linked children with
-// their points summary. The superuser (ADMIN_EMAIL) sees ALL users (break-glass). Any
-// authenticated account may call it; an account with no linked children gets [].
+// GET /api/math/parent/children — the signed-in parent's APPROVED-linked children with
+// their points summary. Always link-based (the console only ever shows approved kids —
+// even for the superuser, who is linked to their own kids via the migration). An account
+// with no linked children gets [].
 router.get('/parent/children', async (req, res, next) => {
   try {
-    const all = isSuperuser(req);
-    const ids = all ? null : await linkedChildIds(req.user._id);
-    if (!all && ids.length === 0) return res.json([]);
+    const ids = await linkedChildIds(req.user._id);
+    if (ids.length === 0) return res.json([]);
 
-    const idFilter     = all ? {} : { _id: { $in: ids } };
-    const rewardFilter = all ? {} : { userId: { $in: ids } };
-    const cfgFilter    = all ? {} : { childId: { $in: ids } };
     const [users, rewards, configs] = await Promise.all([
-      User.find(idFilter).select('name email grade').lean(),
-      MathReward.find(rewardFilter).lean(),
-      MathRewardConfig.find(cfgFilter).select('childId rewards').lean(),
+      User.find({ _id: { $in: ids } }).select('name email grade').lean(),
+      MathReward.find({ userId: { $in: ids } }).lean(),
+      MathRewardConfig.find({ childId: { $in: ids } }).select('childId rewards').lean(),
     ]);
     const byUser = new Map(rewards.map(r => [String(r.userId), r]));
     const cfgByChild = new Map(configs.map(c => [String(c.childId), c.rewards]));
@@ -589,11 +586,10 @@ const PROBLEM_KIND_EMOJI = { idea: '💡', curiosity: '🤔', annoyance: '😤' 
 router.get('/admin/habit-awards', async (req, res, next) => {
   try {
     const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : 'pending';
-    // Scope the queue to the requester's linked children (superuser sees all).
-    const all = isSuperuser(req);
-    const ids = all ? null : await linkedChildIds(req.user._id);
-    if (!all && ids.length === 0) return res.json([]);
-    const ownerFilter = all ? {} : { userId: { $in: ids } };
+    // The approvals queue only ever shows the requester's approved-linked children.
+    const ids = await linkedChildIds(req.user._id);
+    if (ids.length === 0) return res.json([]);
+    const ownerFilter = { userId: { $in: ids } };
     const [habitAwards, problemAwards] = await Promise.all([
       HabitPointAward.find({ status, ...ownerFilter }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
       ProblemAward.find({ status, ...ownerFilter }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
