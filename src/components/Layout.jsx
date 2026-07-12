@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake, Trophy, Map, Brain } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake, Trophy, Map, Brain, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
@@ -53,8 +53,11 @@ export default function Layout({ children }) {
         <div className="relative">
           <button
             onClick={() => setShowMenu(p => !p)}
-            className="flex items-center gap-2 rounded-full hover:bg-slate-100 p-1 pr-2 transition-colors"
+            className="relative flex items-center gap-2 rounded-full hover:bg-slate-100 p-1 pr-2 transition-colors"
           >
+            {user?.pendingIncoming > 0 && (
+              <span className="absolute -top-0.5 left-6 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
+            )}
             {user?.photo ? (
               <img src={user.photo} alt={user.name} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
             ) : (
@@ -92,6 +95,27 @@ export default function Layout({ children }) {
               >
                 <HeartHandshake size={15} /> Parenting
               </NavLink>
+              <NavLink
+                to="/family"
+                onClick={() => setShowMenu(false)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+              >
+                <span className="flex items-center gap-2"><Users size={15} /> Family</span>
+                {user?.pendingIncoming > 0 && (
+                  <span className="text-[10px] font-bold text-white bg-rose-500 rounded-full min-w-4 h-4 px-1 flex items-center justify-center">
+                    {user.pendingIncoming}
+                  </span>
+                )}
+              </NavLink>
+              {(user?.isParent || user?.isAdmin) && (
+                <NavLink
+                  to="/math/admin"
+                  onClick={() => setShowMenu(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <ShieldCheck size={15} /> Parent console
+                </NavLink>
+              )}
               {user?.isAdmin && (
                 <NavLink
                   to="/journey/admin"
@@ -99,15 +123,6 @@ export default function Layout({ children }) {
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
                 >
                   <Map size={15} /> Roadmap
-                </NavLink>
-              )}
-              {user?.isAdmin && (
-                <NavLink
-                  to="/math/admin"
-                  onClick={() => setShowMenu(false)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
-                >
-                  <ShieldCheck size={15} /> Parent console
                 </NavLink>
               )}
               {user?.isAdmin && (

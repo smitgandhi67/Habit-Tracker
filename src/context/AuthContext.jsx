@@ -66,6 +66,20 @@ export function AuthProvider({ children }) {
     });
   }, [user]);
 
+  // Re-fetch the current user (e.g. after linking/approving so isParent +
+  // pendingIncoming update without a full reload).
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/api/auth/me`, { credentials: 'include' });
+      if (!res.ok) return null;
+      const u = await res.json();
+      setUser(u);
+      return u;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const login = useCallback(async (googleCredential) => {
     const res = await fetch(`${BASE}/api/auth/verify`, {
       method: 'POST',
@@ -114,7 +128,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit, updateLengthUnit }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateWeightUnit, updateLengthUnit, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
