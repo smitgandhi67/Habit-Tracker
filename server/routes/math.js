@@ -11,7 +11,7 @@ const Habit = require('../models/Habit');
 const HabitPointAward = require('../models/HabitPointAward');
 const ProblemAward = require('../models/ProblemAward');
 const User = require('../models/User');
-const { requireAdmin } = require('../utils/auth');
+const { isSuperuser, linkedChildIds, assertParentOf, requireParentOf } = require('../utils/auth');
 const {
   DEFAULT_REWARDS,
   factKeyFor,
@@ -98,13 +98,12 @@ async function scheduleStateFor(userId, date) {
 
 // ---- helpers --------------------------------------------------------------
 
-// Reward catalog, seeded from defaults on first access.
-async function getConfig() {
-  let cfg = await MathRewardConfig.findOne({ singleton: 'config' });
-  if (!cfg) {
-    cfg = await MathRewardConfig.create({ singleton: 'config', rewards: DEFAULT_REWARDS });
-  }
-  return cfg;
+// A child's reward catalog. Read-only: falls back to DEFAULT_REWARDS when the child has
+// no row yet (so nothing breaks before the migration / before a parent customizes it).
+// The row is created/updated only by PUT /admin/config.
+async function getConfig(childId) {
+  const cfg = await MathRewardConfig.findOne({ childId }).lean();
+  return cfg || { rewards: DEFAULT_REWARDS };
 }
 
 async function getReward(userId) {
@@ -146,7 +145,7 @@ router.get('/state', async (req, res, next) => {
     const userId = req.user._id;
 
     const [cfg, reward, daily, schedule] = await Promise.all([
-      getConfig(),
+      getConfig(userId),
       getReward(userId),
       MathDailyStat.findOne({ userId, date }).lean(),
       scheduleStateFor(userId, date),
@@ -366,12 +365,12 @@ router.post('/redeem', async (req, res, next) => {
     if (!rewardKey) return res.status(400).json({ error: 'rewardKey required' });
     if (!Number.isInteger(qty) || qty < 1) return res.status(400).json({ error: 'qty must be a positive integer' });
 
-    const cfg = await getConfig();
+    const userId = req.user._id;
+    const cfg = await getConfig(userId);
     const reward = cfg.rewards.find(r => r.key === rewardKey);
     if (!reward) return res.status(404).json({ error: 'Unknown reward' });
 
     const cost = reward.costPoints * qty;
-    const userId = req.user._id;
     const wallet = await getReward(userId);
     if (balanceOf(wallet) < cost) return res.status(400).json({ error: 'Not enough points' });
 
@@ -424,33 +423,44 @@ router.get('/awards', async (req, res, next) => {
 
 // ---- admin routes ---------------------------------------------------------
 
-// GET /api/math/admin/users — every user with their points summary.
-router.get('/admin/users', requireAdmin, async (req, res, next) => {
+// GET /api/math/parent/children — the signed-in parent's approved-linked children with
+// their points summary. The superuser (ADMIN_EMAIL) sees ALL users (break-glass). Any
+// authenticated account may call it; an account with no linked children gets [].
+router.get('/parent/children', async (req, res, next) => {
   try {
-    const cfg = await getConfig();
-    const [users, rewards] = await Promise.all([
-      User.find().select('name email grade').lean(),
-      MathReward.find().lean(),
+    const all = isSuperuser(req);
+    const ids = all ? null : await linkedChildIds(req.user._id);
+    if (!all && ids.length === 0) return res.json([]);
+
+    const idFilter     = all ? {} : { _id: { $in: ids } };
+    const rewardFilter = all ? {} : { userId: { $in: ids } };
+    const cfgFilter    = all ? {} : { childId: { $in: ids } };
+    const [users, rewards, configs] = await Promise.all([
+      User.find(idFilter).select('name email grade').lean(),
+      MathReward.find(rewardFilter).lean(),
+      MathRewardConfig.find(cfgFilter).select('childId rewards').lean(),
     ]);
     const byUser = new Map(rewards.map(r => [String(r.userId), r]));
+    const cfgByChild = new Map(configs.map(c => [String(c.childId), c.rewards]));
     const list = users.map(u => {
       const summary = rewardSummary(byUser.get(String(u._id)));
+      const rw = cfgByChild.get(String(u._id)) || DEFAULT_REWARDS;
       return {
         _id: u._id,
         name: u.name,
         email: u.email,
         grade: u.grade ?? null,
         ...summary,
-        sleepoverPct: sleepoverPct(summary.balance, cfg.rewards),
+        sleepoverPct: sleepoverPct(summary.balance, rw),
       };
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     res.json(list);
   } catch (err) { next(err); }
 });
 
-// PUT /api/math/admin/grade — body { userId, grade: 2|3|4|5|null }. Parent sets a
-// kid's school grade (drives the math difficulty caps). Admin-only.
-router.put('/admin/grade', requireAdmin, async (req, res, next) => {
+// PUT /api/math/admin/grade — body { userId, grade: 2|3|4|5|null }. A linked parent sets
+// their child's school grade (drives the math difficulty caps).
+router.put('/admin/grade', requireParentOf(r => r.body?.userId), async (req, res, next) => {
   try {
     const { userId, grade } = req.body || {};
     if (!mongoose.isValidObjectId(userId)) return res.status(400).json({ error: 'valid userId required' });
@@ -463,8 +473,8 @@ router.put('/admin/grade', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/math/admin/adjust — body { userId, type, amount, reason }
-router.post('/admin/adjust', requireAdmin, async (req, res, next) => {
+// POST /api/math/admin/adjust — body { userId, type, amount, reason }. Linked-parent only.
+router.post('/admin/adjust', requireParentOf(r => r.body?.userId), async (req, res, next) => {
   try {
     const { userId, type, amount, reason = '' } = req.body || {};
     if (!mongoose.isValidObjectId(userId)) return res.status(400).json({ error: 'valid userId required' });
@@ -491,10 +501,10 @@ router.post('/admin/adjust', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/math/admin/config — current reward catalog.
-router.get('/admin/config', requireAdmin, async (req, res, next) => {
+// GET /api/math/admin/config?childId= — that child's reward catalog. Linked-parent only.
+router.get('/admin/config', requireParentOf(r => r.query.childId), async (req, res, next) => {
   try {
-    const cfg = await getConfig();
+    const cfg = await getConfig(req.query.childId);
     res.json({ rewards: cfg.rewards });
   } catch (err) { next(err); }
 });
@@ -505,12 +515,13 @@ function slugifyKey(s) {
   return slug || 'reward';
 }
 
-// PUT /api/math/admin/config — body { rewards: [{ key?, label, costPoints, unit }] }.
-// Parent-managed reward catalog. New rewards may omit `key` — one is generated from the
-// label and de-duplicated. Costs are points-per-unit ('event' one-shot | 'minute' qty).
-router.put('/admin/config', requireAdmin, async (req, res, next) => {
+// PUT /api/math/admin/config — body { childId, rewards: [{ key?, label, costPoints, unit }] }.
+// A linked parent edits that child's reward catalog. New rewards may omit `key` — one is
+// generated from the label and de-duplicated. Costs are points-per-unit ('event' one-shot
+// | 'minute' qty).
+router.put('/admin/config', requireParentOf(r => r.body?.childId), async (req, res, next) => {
   try {
-    const { rewards } = req.body || {};
+    const { childId, rewards } = req.body || {};
     if (!Array.isArray(rewards) || rewards.length === 0) {
       return res.status(400).json({ error: 'rewards must be a non-empty array' });
     }
@@ -534,8 +545,8 @@ router.put('/admin/config', requireAdmin, async (req, res, next) => {
       clean.push({ key, label, costPoints: r.costPoints, unit: r.unit === 'minute' ? 'minute' : 'event' });
     }
     const cfg = await MathRewardConfig.findOneAndUpdate(
-      { singleton: 'config' },
-      { rewards: clean },
+      { childId },
+      { rewards: clean, childId },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     res.json({ rewards: cfg.rewards });
@@ -544,28 +555,27 @@ router.put('/admin/config', requireAdmin, async (req, res, next) => {
 
 // ---- admin: habit points + approvals --------------------------------------
 
-// GET /api/math/admin/habits?userId= — active habits (optionally for one kid) with
-// their point value, for the points-assignment UI.
-router.get('/admin/habits', requireAdmin, async (req, res, next) => {
+// GET /api/math/admin/habits?userId= — one linked child's active habits with their point
+// value, for the points-assignment UI. A specific child is required (link-scoped).
+router.get('/admin/habits', requireParentOf(r => r.query.userId), async (req, res, next) => {
   try {
-    const filter = { archivedAt: null };
-    if (req.query.userId) {
-      if (!mongoose.isValidObjectId(req.query.userId)) return res.status(400).json({ error: 'valid userId required' });
-      filter.userId = req.query.userId;
-    }
-    const habits = await Habit.find(filter).select('userId name emoji points order').sort({ order: 1 }).lean();
+    const habits = await Habit.find({ archivedAt: null, userId: req.query.userId })
+      .select('userId name emoji points order').sort({ order: 1 }).lean();
     res.json(habits);
   } catch (err) { next(err); }
 });
 
-// PUT /api/math/admin/habits/:habitId/points — body { points }
-router.put('/admin/habits/:habitId/points', requireAdmin, async (req, res, next) => {
+// PUT /api/math/admin/habits/:habitId/points — body { points }. The habit's owner must be
+// a child the requester is linked to (checked from the loaded habit, not a client param).
+router.put('/admin/habits/:habitId/points', async (req, res, next) => {
   try {
     const { points } = req.body || {};
     if (!mongoose.isValidObjectId(req.params.habitId)) return res.status(400).json({ error: 'valid habitId required' });
     if (!Number.isInteger(points) || points < 0) return res.status(400).json({ error: 'points must be a non-negative integer' });
+    const target = await Habit.findById(req.params.habitId).select('userId').lean();
+    if (!target) return res.status(404).json({ error: 'Habit not found' });
+    if (!(await assertParentOf(req, target.userId))) return res.status(403).json({ error: 'Not authorised for this child' });
     const habit = await Habit.findByIdAndUpdate(req.params.habitId, { points }, { new: true }).select('_id name points').lean();
-    if (!habit) return res.status(404).json({ error: 'Habit not found' });
     res.json(habit);
   } catch (err) { next(err); }
 });
@@ -576,12 +586,17 @@ const PROBLEM_KIND_EMOJI = { idea: '💡', curiosity: '🤔', annoyance: '😤' 
 // GET /api/math/admin/habit-awards?status=pending — awards to review, enriched with
 // kid + habit names. Merges habit completions and solved-problem awards into one queue
 // (each row tagged `source`). Defaults to pending; accepts pending|approved|rejected.
-router.get('/admin/habit-awards', requireAdmin, async (req, res, next) => {
+router.get('/admin/habit-awards', async (req, res, next) => {
   try {
     const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : 'pending';
+    // Scope the queue to the requester's linked children (superuser sees all).
+    const all = isSuperuser(req);
+    const ids = all ? null : await linkedChildIds(req.user._id);
+    if (!all && ids.length === 0) return res.json([]);
+    const ownerFilter = all ? {} : { userId: { $in: ids } };
     const [habitAwards, problemAwards] = await Promise.all([
-      HabitPointAward.find({ status }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
-      ProblemAward.find({ status }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
+      HabitPointAward.find({ status, ...ownerFilter }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
+      ProblemAward.find({ status, ...ownerFilter }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
     ]);
     const userIds = [...new Set([...habitAwards, ...problemAwards].map(a => String(a.userId)))];
     const habitIds = [...new Set(habitAwards.map(a => String(a.habitId)))];
@@ -665,9 +680,15 @@ async function approveProblemAward(id, adminEmail) {
 
 // POST /api/math/admin/habit-awards/:id/approve — idempotent: credits the kid's pool
 // once on the pending→approved transition, with an audit row.
-router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, next) => {
+router.post('/admin/habit-awards/:id/approve', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid award id required' });
+    // Ownership gate: the award's kid must be a child the requester is linked to (checked
+    // against the stored award, never a client param). Superuser bypasses.
+    const owner = await HabitPointAward.findById(req.params.id).select('userId').lean()
+      || await ProblemAward.findById(req.params.id).select('userId').lean();
+    if (!owner) return res.status(404).json({ error: 'Award not found' });
+    if (!(await assertParentOf(req, owner.userId))) return res.status(403).json({ error: 'Not authorised for this child' });
     // Atomic claim: only the pending→approved transition proceeds. Concurrent approves
     // of the same award (double-click, retried request) can never double-credit the pool
     // because just one updateOne wins the guarded filter.
@@ -717,12 +738,13 @@ router.post('/admin/habit-awards/:id/approve', requireAdmin, async (req, res, ne
 });
 
 // POST /api/math/admin/habit-awards/:id/reject — only from pending (approved is final).
-router.post('/admin/habit-awards/:id/reject', requireAdmin, async (req, res, next) => {
+router.post('/admin/habit-awards/:id/reject', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'valid award id required' });
     const award = await HabitPointAward.findById(req.params.id)
       || await ProblemAward.findById(req.params.id);
     if (!award) return res.status(404).json({ error: 'Award not found' });
+    if (!(await assertParentOf(req, award.userId))) return res.status(403).json({ error: 'Not authorised for this child' });
     if (award.status === 'approved') return res.status(409).json({ error: 'Cannot reject an already-approved award' });
 
     award.status = 'rejected';
@@ -739,13 +761,27 @@ router.post('/admin/habit-awards/:id/reject', requireAdmin, async (req, res, nex
 // us re-read exactly the rows THIS request transitioned (race-safe under concurrent admins
 // and idempotent — already-approved/rejected/missing ids are skipped, never double-credited).
 const APPROVE_BATCH_MAX = 200;
-router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, next) => {
+router.post('/admin/habit-awards/approve-batch', async (req, res, next) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
     if (!ids || ids.length === 0) return res.status(400).json({ error: 'ids must be a non-empty array' });
     if (ids.length > APPROVE_BATCH_MAX) return res.status(400).json({ error: `Cannot approve more than ${APPROVE_BATCH_MAX} at once` });
-    const validIds = [...new Set(ids.filter(id => mongoose.isValidObjectId(id)).map(String))];
-    if (validIds.length === 0) return res.status(400).json({ error: 'no valid award ids' });
+    const requestedIds = [...new Set(ids.filter(id => mongoose.isValidObjectId(id)).map(String))];
+    if (requestedIds.length === 0) return res.status(400).json({ error: 'no valid award ids' });
+
+    // Ownership filter: keep only awards whose kid is a child the requester is linked to
+    // (superuser keeps all). Non-owned ids are silently skipped — never credited.
+    let validIds = requestedIds;
+    if (!isSuperuser(req)) {
+      const myKids = new Set(await linkedChildIds(req.user._id));
+      const [ha, pa] = await Promise.all([
+        HabitPointAward.find({ _id: { $in: requestedIds } }).select('_id userId').lean(),
+        ProblemAward.find({ _id: { $in: requestedIds } }).select('_id userId').lean(),
+      ]);
+      const ownerById = new Map([...ha, ...pa].map(a => [String(a._id), String(a.userId)]));
+      validIds = requestedIds.filter(id => myKids.has(ownerById.get(id)));
+      if (validIds.length === 0) return res.json({ approved: 0, skipped: requestedIds.length, ids: [] });
+    }
 
     const ts = new Date();
     await HabitPointAward.updateMany(
@@ -835,7 +871,7 @@ router.post('/admin/habit-awards/approve-batch', requireAdmin, async (req, res, 
     }
 
     const approvedIds = [...claimed.map(a => a._id), ...claimedP.map(a => a._id)];
-    res.json({ approved: approvedIds.length, skipped: validIds.length - approvedIds.length, ids: approvedIds });
+    res.json({ approved: approvedIds.length, skipped: requestedIds.length - approvedIds.length, ids: approvedIds });
   } catch (err) { next(err); }
 });
 
@@ -922,10 +958,9 @@ router.get('/ledger', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/math/admin/ledger?userId=&cursor=&limit= — any kid's history (admin).
-router.get('/admin/ledger', requireAdmin, async (req, res, next) => {
+// GET /api/math/admin/ledger?userId=&cursor=&limit= — a linked child's points history.
+router.get('/admin/ledger', requireParentOf(r => r.query.userId), async (req, res, next) => {
   try {
-    if (!mongoose.isValidObjectId(req.query.userId)) return res.status(400).json({ error: 'valid userId required' });
     const q = parseLedgerQuery(req);
     if (q.error) return res.status(400).json({ error: q.error });
     res.json(await buildLedger(req.query.userId, q.cursor, q.limit));
