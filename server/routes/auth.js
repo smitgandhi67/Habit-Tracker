@@ -3,11 +3,24 @@ const router = express.Router();
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const AccountLink = require('../models/AccountLink');
 const requireAuth = require('../middleware/auth');
 const { ADMIN_EMAIL } = require('../utils/auth');
 const { ageFromBirthdate } = require('../utils/age');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// Derived family role for the client: `isParent` (has ≥1 approved link where I'm the
+// parent — drives the parent-console nav) and `pendingIncoming` (link requests awaiting
+// my approval — drives the Family badge). Roleless accounts: an adult with no kids is
+// just isParent:false.
+async function familyFlags(userId) {
+  const [isParent, pendingIncoming] = await Promise.all([
+    AccountLink.exists({ parentId: userId, status: 'approved' }),
+    AccountLink.countDocuments({ childId: userId, status: 'pending' }),
+  ]);
+  return { isParent: !!isParent, pendingIncoming };
+}
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -40,6 +53,7 @@ router.post('/verify', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    const flags = await familyFlags(user._id);
     res.cookie('token', token, COOKIE_OPTS).json({
       _id: user._id,
       email: user.email,
@@ -52,6 +66,7 @@ router.post('/verify', async (req, res) => {
       birthdate: user.birthdate || null,
       age: ageFromBirthdate(user.birthdate),
       isAdmin: user.email === ADMIN_EMAIL,
+      ...flags,
       createdAt: user.createdAt,
     });
   } catch (err) {
@@ -64,6 +79,7 @@ router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
+    const flags = await familyFlags(user._id);
     res.json({
       _id: user._id,
       email: user.email,
@@ -76,6 +92,7 @@ router.get('/me', requireAuth, async (req, res) => {
       birthdate: user.birthdate || null,
       age: ageFromBirthdate(user.birthdate),
       isAdmin: user.email === ADMIN_EMAIL,
+      ...flags,
       createdAt: user.createdAt,
     });
   } catch (err) {
