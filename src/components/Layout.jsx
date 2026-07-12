@@ -88,13 +88,15 @@ export default function Layout({ children }) {
               >
                 <Trophy size={15} /> Trophies
               </NavLink>
-              <NavLink
-                to="/parenting"
-                onClick={() => setShowMenu(false)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
-              >
-                <HeartHandshake size={15} /> Parenting
-              </NavLink>
+              {user?.isAdmin && (
+                <NavLink
+                  to="/parenting"
+                  onClick={() => setShowMenu(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <HeartHandshake size={15} /> Parenting
+                </NavLink>
+              )}
               <NavLink
                 to="/family"
                 onClick={() => setShowMenu(false)}
