@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2, History } from 'lucide-react';
@@ -67,11 +67,11 @@ export default function MathAdmin() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const list = await apiFetch('/api/math/admin/users');
+      const list = await apiFetch('/api/math/parent/children');
       setUsers(list);
       setSelected(prev => (prev ? list.find(u => u._id === prev._id) || null : null));
     } catch {
-      toast.error('Failed to load users');
+      toast.error('Failed to load children');
     }
   }, []);
 
@@ -88,28 +88,29 @@ export default function MathAdmin() {
   }, []);
 
   useEffect(() => {
-    if (!user?.isAdmin) return;
-    apiFetch('/api/math/admin/users')
+    if (!user?.isParent && !user?.isAdmin) return;
+    apiFetch('/api/math/parent/children')
       .then(list => setUsers(list))
-      .catch(() => toast.error('Failed to load users'));
-    apiFetch('/api/math/admin/config')
-      .then(d => setRewards(d.rewards || []))
-      .catch(() => {});
+      .catch(() => toast.error('Failed to load children'));
     apiFetch('/api/math/admin/habit-awards?status=pending')
       .then(list => setAwards(list))
       .catch(() => {});
   }, [user]);
 
-  // Load the selected kid's habits (with point values) for the assignment UI.
+  // Load the selected kid's habits + their per-child reward catalog when the selection
+  // changes (rewards are per-child now, not global).
   useEffect(() => {
     let cancelled = false;
     if (!selected) {
-      Promise.resolve().then(() => { if (!cancelled) setHabits([]); });
+      Promise.resolve().then(() => { if (!cancelled) { setHabits([]); setRewards([]); } });
       return () => { cancelled = true; };
     }
     apiFetch(`/api/math/admin/habits?userId=${selected._id}`)
       .then(list => { if (!cancelled) setHabits(list.map(h => ({ ...h, draft: String(h.points || 0) }))); })
       .catch(() => { if (!cancelled) setHabits([]); });
+    apiFetch(`/api/math/admin/config?childId=${selected._id}`)
+      .then(d => { if (!cancelled) setRewards(d.rewards || []); })
+      .catch(() => { if (!cancelled) setRewards([]); });
     return () => { cancelled = true; };
   }, [selected]);
 
@@ -210,7 +211,7 @@ export default function MathAdmin() {
   }
 
   if (authLoading) return <div className="p-4 pt-10 text-center text-slate-400">Loading…</div>;
-  if (!user?.isAdmin) return <Navigate to="/math" replace />;
+  if (!user?.isParent && !user?.isAdmin) return <Navigate to="/math" replace />;
 
   async function adjust(type) {
     if (!selected) return;
@@ -245,6 +246,7 @@ export default function MathAdmin() {
   }
 
   async function saveConfig() {
+    if (!selected) return;
     // Validate client-side so the parent gets an inline message instead of a 400.
     const clean = [];
     for (const r of rewards) {
@@ -262,7 +264,7 @@ export default function MathAdmin() {
     try {
       const d = await apiFetch('/api/math/admin/config', {
         method: 'PUT',
-        body: JSON.stringify({ rewards: clean }),
+        body: JSON.stringify({ childId: selected._id, rewards: clean }),
       });
       setRewards(d.rewards || []);
       await loadUsers();
@@ -408,7 +410,12 @@ export default function MathAdmin() {
               </div>
             </button>
           ))}
-          {users.length === 0 && <p className="text-sm text-slate-400">No users yet.</p>}
+          {users.length === 0 && (
+            <p className="text-sm text-slate-400">
+              No children linked yet.{' '}
+              <Link to="/family" className="font-semibold text-violet-600 hover:text-violet-700">Link a child in Family →</Link>
+            </p>
+          )}
         </div>
       </div>
 
@@ -531,11 +538,12 @@ export default function MathAdmin() {
         </div>
       )}
 
-      {/* Reward config — add/edit/remove rewards and their point cost */}
+      {/* Reward config — per selected child (add/edit/remove rewards + point cost) */}
+      {selected && (
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-        <h3 className="font-bold text-slate-700 mb-1">Rewards</h3>
+        <h3 className="font-bold text-slate-700 mb-1">Rewards — {selected.name}</h3>
         <p className="text-xs text-slate-400 mb-3">
-          Points a kid spends to redeem. “minute” rewards can be redeemed in quantities; “event” is one-shot.
+          Points {selected.name} spends to redeem. “minute” rewards can be redeemed in quantities; “event” is one-shot.
         </p>
         <div className="space-y-2 mb-3">
           {rewards.map((r, i) => (
@@ -589,6 +597,7 @@ export default function MathAdmin() {
           <Save size={16} /> Save rewards
         </button>
       </div>
+      )}
     </div>
   );
 }
