@@ -17,6 +17,7 @@ const mongoose     = require('mongoose');
 const requireAuth  = require('./middleware/auth');
 const errorHandler = require('./middleware/errorHandler');
 const authRouter   = require('./routes/auth');
+const linksRouter  = require('./routes/links');
 const habitsRouter = require('./routes/habits');
 const logsRouter   = require('./routes/logs');
 const gymRouter    = require('./routes/gym');
@@ -67,6 +68,7 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
+app.use('/api/links',       requireAuth, linksRouter);
 app.use('/api/habits',      requireAuth, habitsRouter);
 app.use('/api/logs',        requireAuth, logsRouter);
 app.use('/api/gym',         requireAuth, gymRouter);
