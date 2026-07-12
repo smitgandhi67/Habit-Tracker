@@ -21,6 +21,7 @@ import MathPage from './pages/Math';
 import Zigzag from './pages/Zigzag';
 import StepMul from './pages/StepMul';
 import MathAdmin from './pages/MathAdmin';
+import Family from './pages/Family';
 import Build from './pages/Build';
 import Skills from './pages/Skills';
 import SkillsBaselineParentQuiz from './pages/SkillsBaselineParentQuiz';
@@ -88,6 +89,7 @@ function AppInner() {
                   <Route path="/journey/admin" element={<JourneyAdmin />} />
                   <Route path="/math/history" element={<PointsHistory />} />
                   <Route path="/math/admin" element={<MathAdmin />} />
+                  <Route path="/family" element={<Family />} />
                   <Route path="/parenting" element={<Parenting />} />
                   <Route path="/parenting/quiz/:key" element={<ParentingQuiz />} />
                   <Route path="/parenting/kid/:key" element={<ParentingKidQuiz />} />
