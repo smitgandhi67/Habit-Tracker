@@ -110,3 +110,24 @@ export function meaningOptions(root, n = 4) {
   }
   return shuffle(opts).map(m => ({ text: m, correct: m === correct }));
 }
+
+// Pick a decode word for a root's decode challenge, preferring one NOT yet tested (so the
+// challenge is a NOVEL word — the graduation gate). Falls back to the first if all used.
+export function pickDecodeWord(root, decodedWords = []) {
+  const used = new Set(decodedWords.map(w => String(w).toLowerCase()));
+  const list = root.decode_words || [];
+  return list.find(d => !used.has(d.word.toLowerCase())) || list[0] || null;
+}
+
+// Gloss multiple-choice for a decode word: the true gloss + three other decode-word glosses.
+let _glossPool = null;
+export function glossOptions(dw, n = 4) {
+  if (!_glossPool) _glossPool = [...new Set(ROOTS.flatMap(r => (r.decode_words || []).map(d => d.gloss)))];
+  const correct = dw.gloss;
+  const opts = [correct];
+  for (const g of shuffle(_glossPool)) {
+    if (opts.length >= n) break;
+    if (!opts.includes(g)) opts.push(g);
+  }
+  return shuffle(opts).map(g => ({ text: g, correct: g === correct }));
+}

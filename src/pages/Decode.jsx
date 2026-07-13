@@ -6,6 +6,7 @@ import ConceptIntro from '../components/decode/ConceptIntro';
 import FirstExposure from '../components/decode/FirstExposure';
 import FreeGen from '../components/decode/FreeGen';
 import KeywordRecall from '../components/decode/KeywordRecall';
+import DecodeChallenge from '../components/decode/DecodeChallenge';
 import DecodeStatsHeader from '../components/decode/DecodeStatsHeader';
 
 // Word Decoder practice page. Runs the one-time concept intro, then works through the
@@ -90,6 +91,8 @@ export default function DecodePage() {
             <FreeGen key={current.rootId} root={getRoot(current.rootId)} submit={(p) => dec.submit(current, p)} onNext={dec.next} />
           ) : current.interaction === 'keyword_recall' ? (
             <KeywordRecall key={current.rootId} root={getRoot(current.rootId)} submit={(p) => dec.submit(current, p)} onNext={dec.next} />
+          ) : current.interaction === 'decode_challenge' ? (
+            <DecodeChallenge key={current.rootId} root={getRoot(current.rootId)} decodedWords={current.decodedWords} submit={(p) => dec.submit(current, p)} onNext={dec.next} />
           ) : (
             <ReviewPlaceholder interaction={current.interaction} onSkip={dec.next} />
           )}
