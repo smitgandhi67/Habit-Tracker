@@ -6,6 +6,7 @@ import ConceptIntro from '../components/decode/ConceptIntro';
 import FirstExposure from '../components/decode/FirstExposure';
 import FreeGen from '../components/decode/FreeGen';
 import KeywordRecall from '../components/decode/KeywordRecall';
+import DecodeStatsHeader from '../components/decode/DecodeStatsHeader';
 
 // Word Decoder practice page. Runs the one-time concept intro, then works through the
 // server-scheduled queue of due roots, firing the right interaction for each root's rung.
@@ -49,6 +50,15 @@ export default function DecodePage() {
           <span className="rounded-full bg-slate-100 text-slate-500 px-2 py-0.5">{summary.new} new</span>
         </div>
       </header>
+
+      {introSeen && (
+        <DecodeStatsHeader
+          todayAttempted={today.attempted}
+          goal={cap.dailyGoal}
+          caughtUp={caughtUp}
+          refreshKey={session.answered}
+        />
+      )}
 
       {!introSeen ? (
         <ConceptIntro onDone={markIntroSeen} />
