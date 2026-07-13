@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
-import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake, Trophy, Map, Brain, Users } from 'lucide-react';
+import { CalendarDays, ListChecks, BarChart2, Dumbbell, Moon, Utensils, Calculator, Lightbulb, ShieldCheck, LogOut, Star, HeartHandshake, Trophy, Map, Brain, Users, BookOpenCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
@@ -74,6 +74,13 @@ export default function Layout({ children }) {
                 <p className="text-xs font-semibold text-slate-700 truncate">{user?.name}</p>
                 <p className="text-xs text-slate-400 truncate">{user?.email}</p>
               </div>
+              <NavLink
+                to="/decode"
+                onClick={() => setShowMenu(false)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
+              >
+                <BookOpenCheck size={15} /> Word Decoder
+              </NavLink>
               <NavLink
                 to="/skills"
                 onClick={() => setShowMenu(false)}

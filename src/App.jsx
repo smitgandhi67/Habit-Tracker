@@ -18,6 +18,7 @@ import Meals from './pages/Meals';
 import MealsLibrary from './pages/MealsLibrary';
 import MealsEditor from './pages/MealsEditor';
 import MathPage from './pages/Math';
+import DecodePage from './pages/Decode';
 import Zigzag from './pages/Zigzag';
 import StepMul from './pages/StepMul';
 import MathAdmin from './pages/MathAdmin';
@@ -71,6 +72,7 @@ function AppInner() {
                   <Route path="/meals/library" element={<MealsLibrary />} />
                   <Route path="/meals/:id/edit" element={<MealsEditor />} />
                   <Route path="/math" element={<MathPage />} />
+                  <Route path="/decode" element={<DecodePage />} />
                   <Route path="/math/zigzag" element={<Zigzag />} />
                   <Route path="/math/stepmul" element={<StepMul />} />
                   <Route path="/build" element={<Build />} />
