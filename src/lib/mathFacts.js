@@ -89,7 +89,28 @@ export function choicesForQuestion(q) {
   if (!q) return [];
   if (q.op === 'sqrt' || q.op === 'cbrt') return choicesForAnswer(q.answer, 1, 2);
   if (q.op === 'frac') return fractionChoices(q);
+  if (q.op === 'fdec') return decimalChoices(q.answer);
+  if (q.op === 'pct') return choicesForAnswer(q.answer, 5, 10);       // percent: nudge by 5/10
+  if (q.op === 'mix') return q.b === 1 ? choicesForAnswer(q.answer, 5, 10) : decimalChoices(q.answer);
   return choicesForAnswer(q.answer, q.a, q.b);
+}
+
+// Four decimal options around a value in (0,1), 3-dp, distractors ≥0.05 away so only the
+// correct one grades. Used by Frac→Dec and the decimal side of Mixed (any proper fraction,
+// unlike fractionChoices which special-cases the unit-fraction 1/1).
+function decimalChoices(v) {
+  const r3 = x => Math.round(x * 1000) / 1000;
+  const set = new Set([r3(v)]);
+  const cands = [r3(v + 0.1), r3(v - 0.05), r3(v + 0.05), r3(v - 0.1), r3(v + 0.2), r3(v - 0.2)];
+  for (const c of cands) { if (set.size >= 4) break; if (c > 0 && c < 1) set.add(c); }
+  let pad = 0.05;
+  while (set.size < 4) { const c = r3(v + pad); if (c > 0 && c < 1) set.add(c); pad += 0.05; }
+  const arr = [...set].slice(0, 4);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 // Four decimal options around a unit fraction's value. Rounded to 3 dp so the correct

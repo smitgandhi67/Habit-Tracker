@@ -17,7 +17,7 @@ function assert(label, ok, detail) {
 function eq(label, a, b) { assert(label, a === b, `expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
 
 // registry shape
-eq('registry has 9 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac');
+eq('registry has 12 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac,pct,fdec,mix');
 
 // mul universe includes 0/1: operands 0..20 → 231 deduped facts.
 eq('generateAllFacts(20) incl 0/1', generateAllFacts(20).length, 231);
@@ -88,6 +88,31 @@ assert('reject 0.3 for 1/3', !gradeAnswer('frac', 3, 1, 0.3), 'wrongly accepted'
 // integer types still graded exactly through the same helpers
 assert('grade mul exact', gradeAnswer('mul', 6, 7, parseTypedAnswer('mul', 6, 7, '42')), 'rejected');
 assert('reject mul 43', !gradeAnswer('mul', 6, 7, 43), 'wrongly accepted');
+
+// fraction↔decimal↔percent equivalents
+eq('pct display', TYPES.pct.display(3, 4), '3/4 = ?%');
+eq('pct answer 3/4', TYPES.pct.answer(3, 4), 75);
+eq('pct generate count', generateFacts('pct', 100).length, 14);
+assert('grade pct 75 for 3/4', gradeAnswer('pct', 3, 4, 75), 'rejected');
+assert('reject pct 70 for 3/4', !gradeAnswer('pct', 3, 4, 70), 'wrongly accepted');
+
+eq('fdec answer 3/8', TYPES.fdec.answer(3, 8), 0.375);
+eq('fdec generate count', generateFacts('fdec', 100).length, 20);
+assert('parse fdec "375" → 0.375', parseTypedAnswer('fdec', 3, 8, '375') === 0.375, 'bad parse');
+assert('grade fdec 0.375 for 3/8', gradeAnswer('fdec', 3, 8, parseTypedAnswer('fdec', 3, 8, '375')), 'rejected');
+assert('reject fdec 0.38 for 3/8 (too coarse)', !gradeAnswer('fdec', 3, 8, 0.38), 'wrongly accepted');
+
+// mix: a = MIX index, b = direction (0 dec | 1 pct). 3/8 is index 15 in FDEC_SET.
+const mixFacts = generateFacts('mix', 100);
+eq('mix generate count (20 dec + 18 pct)', mixFacts.length, 38);
+const idx38 = 15; // FDEC_SET[15] = [3,8]
+eq('mix decimal answer 3/8', TYPES.mix.answer(idx38, 0), 0.375);
+eq('mix percent answer 3/8 is a half-percent', TYPES.mix.answer(idx38, 1), 37.5);
+assert('grade mix percent 37.5 for 3/8', gradeAnswer('mix', idx38, 1, parseTypedAnswer('mix', idx38, 1, '37.5')), 'rejected');
+assert('grade mix decimal 0.375 for 3/8', gradeAnswer('mix', idx38, 0, parseTypedAnswer('mix', idx38, 0, '375')), 'rejected');
+assert('reject mix percent 40 for 3/8', !gradeAnswer('mix', idx38, 1, 40), 'wrongly accepted');
+eq('mix choices (percent) one correct', choicesForQuestion({ op: 'mix', a: idx38, b: 1, answer: 37.5 }).filter(c => gradeAnswer('mix', idx38, 1, c)).length, 1);
+eq('mix choices (decimal) one correct', choicesForQuestion({ op: 'mix', a: idx38, b: 0, answer: 0.375 }).filter(c => gradeAnswer('mix', idx38, 0, c)).length, 1);
 
 // factKeyFor round-trips / canonicalization for binary ops.
 eq('factKeyFor mul commutes', factKeyFor('mul', 8, 7), canonicalKey(8, 7));

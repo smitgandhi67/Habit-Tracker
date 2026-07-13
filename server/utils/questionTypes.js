@@ -15,11 +15,19 @@ const MUL_MAX = 20;        // multiplication table bound (operands 0..20)
 const ADDSUB_MAX = 100;    // sanity bound for add/sub/div operands
 const SQ_MAX = 50;         // sanity bound for square base n
 const CUBE_MAX = 20;       // sanity bound for cube base n
-const FRAC_TOL = 0.005;    // unit-fraction grading tolerance (accepts 2- or 3-dp rounding)
+const FRAC_TOL = 0.005;    // decimal grading tolerance (accepts 2- or 3-dp rounding)
+const PCT_TOL = 0.05;      // percent grading tolerance (accepts the exact half-percents)
 
 const isInt = Number.isInteger;
 const lo = (a, b) => Math.min(a, b);
 const hi = (a, b) => Math.max(a, b);
+
+// Common fraction↔decimal↔percent equivalents — MIRROR of src/lib/questionTypes.js.
+const PCT_SET = [[1, 2], [1, 4], [3, 4], [1, 5], [2, 5], [3, 5], [4, 5], [1, 10], [3, 10], [7, 10], [9, 10], [1, 20], [1, 25], [1, 100]];
+const FDEC_SET = [...PCT_SET, [1, 8], [3, 8], [5, 8], [7, 8], [1, 3], [2, 3]];
+const MIX = FDEC_SET.map(([n, d]) => ({ n, d, dec: n / d, pct: (100 * n) / d, hasPct: d !== 3 }));
+const PCT_KEYS = new Set(PCT_SET.map(([a, b]) => `${a}/${b}`));
+const FDEC_KEYS = new Set(FDEC_SET.map(([a, b]) => `${a}/${b}`));
 
 const TYPES = {
   mul: {
@@ -102,6 +110,42 @@ const TYPES = {
     validate: (a) => isInt(a) && a >= 1 && a <= 10,
     isTrivial: (a) => a === 1,                 // 1/1 = 1
     generate: (max) => { const f = [], c = Math.min(max, 10); for (let n = 1; n <= c; n++) f.push({ a: n, b: 1, key: `frac:1/${n}` }); return f; },
+  },
+  pct: {
+    key: 'pct', points: 3, commutative: false,
+    factKey: (a, b) => `pct:${a}/${b}`,
+    answer: (a, b) => (100 * a) / b,
+    isCorrect: (a, b, ans) => ans === (100 * a) / b,
+    validate: (a, b) => PCT_KEYS.has(`${a}/${b}`),
+    isTrivial: () => false,
+    generate: () => PCT_SET.map(([a, b]) => ({ a, b, key: `pct:${a}/${b}` })),
+  },
+  fdec: {
+    key: 'fdec', points: 3, commutative: false, integerAnswer: false,
+    factKey: (a, b) => `fdec:${a}/${b}`,
+    answer: (a, b) => a / b,
+    isCorrect: (a, b, ans) => Math.abs(ans - a / b) <= FRAC_TOL,
+    validate: (a, b) => FDEC_KEYS.has(`${a}/${b}`),
+    isTrivial: () => false,
+    generate: () => FDEC_SET.map(([a, b]) => ({ a, b, key: `fdec:${a}/${b}` })),
+  },
+  mix: {
+    key: 'mix', points: 5, commutative: false, integerAnswer: false,
+    factKey: (a, b) => `mix:${a}:${b}`,        // a = MIX index, b = direction (0 dec | 1 pct)
+    answer: (a, b) => (b === 1 ? MIX[a].pct : MIX[a].dec),
+    isCorrect: (a, b, ans) => (b === 1
+      ? MIX[a] && Math.abs(ans - MIX[a].pct) <= PCT_TOL
+      : !!MIX[a] && Math.abs(ans - MIX[a].dec) <= FRAC_TOL),
+    validate: (a, b) => isInt(a) && a >= 0 && a < MIX.length && (b === 0 || (b === 1 && MIX[a].hasPct)),
+    isTrivial: () => false,
+    generate: () => {
+      const f = [];
+      MIX.forEach((m, i) => {
+        f.push({ a: i, b: 0, key: `mix:${i}:0` });
+        if (m.hasPct) f.push({ a: i, b: 1, key: `mix:${i}:1` });
+      });
+      return f;
+    },
   },
 };
 
