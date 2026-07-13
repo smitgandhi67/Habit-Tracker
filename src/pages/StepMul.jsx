@@ -43,7 +43,7 @@ function postStepmul(q, answer, dateStr) {
   });
 }
 
-export default function StepMul() {
+export default function StepMul({ embedded = false }) {
   const { user } = useAuth();
   const timerTotal = timerFor(user?.grade);
   const dateStr = format(new Date(), 'yyyy-MM-dd');
@@ -143,27 +143,13 @@ export default function StepMul() {
     inputRef.current?.focus();
   }
 
-  return (
-    <div className="p-4 pb-28">
-      <header className="pt-4 mb-4">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
-            <Asterisk className="text-violet-500" /> Step ×
-          </h1>
-          <Link
-            to="/math"
-            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
-          >
-            <ArrowLeft size={16} /> Math
-          </Link>
-        </div>
-        <p className="text-slate-400 text-sm mt-1">
-          Two-digit × one-digit · {timerTotal}s each · first 20/day earn ⭐10
-        </p>
-      </header>
+  const subtitle = `Two-digit × one-digit · ${timerTotal}s each · first 20/day earn ⭐10`;
 
-      {/* Practice card */}
+  // Shared by the standalone page and the embedded (inline on /math) form; embedded
+  // shows a compact subtitle in place of the page header.
+  const card = (
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4">
+        {embedded && <p className="text-center text-xs text-slate-400 mb-3">{subtitle}</p>}
         {/* Prompt */}
         <div className="text-center">
           <div className="text-6xl font-extrabold text-slate-800 tracking-tight tabular-nums">
@@ -246,6 +232,28 @@ export default function StepMul() {
           <span><b className="text-violet-600">+{session.points}</b> points</span>
         </div>
       </div>
+  );
+
+  if (embedded) return card;
+
+  return (
+    <div className="p-4 pb-28">
+      <header className="pt-4 mb-4">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
+            <Asterisk className="text-violet-500" /> Step ×
+          </h1>
+          <Link
+            to="/math"
+            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
+          >
+            <ArrowLeft size={16} /> Math
+          </Link>
+        </div>
+        <p className="text-slate-400 text-sm mt-1">{subtitle}</p>
+      </header>
+
+      {card}
 
       {/* Wallet balance */}
       {balance != null && (

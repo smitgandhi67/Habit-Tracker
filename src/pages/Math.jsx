@@ -13,6 +13,8 @@ import toast from 'react-hot-toast';
 import MathStatsHeader from '../components/MathStatsHeader';
 import OpGrid from '../components/OpGrid';
 import ComboCelebrate from '../components/ComboCelebrate';
+import Zigzag from './Zigzag';
+import StepMul from './StepMul';
 
 // Operation toggle, built from the question-type registry so a new formula appears
 // here automatically (key/symbol/label come from the descriptor).
@@ -39,10 +41,15 @@ export default function MathPage() {
   const [combo, setCombo] = useState(0);       // consecutive first-try-correct this session
   const [burst, setBurst] = useState(0);       // bump to re-fire the confetti overlay
   const [bigBurst, setBigBurst] = useState(false);
+  const [drill, setDrill] = useState(null);    // null | 'zigzag' | 'stepmul' — inline timed drill
   const inputRef = useRef(null);
 
   // Switching operation starts a fresh combo — a run is within one mode.
   useEffect(() => { setCombo(0); }, [op]);
+
+  // Picking a fact operation leaves any drill and swaps the question in place, resetting
+  // the card to a fresh input phase.
+  function selectOp(k) { setDrill(null); setTyped(''); setPhase('input'); setOp(k); }
 
   const choices = useMemo(() => choicesForQuestion(question), [question]);
   const timerTotal = timerSecondsFor(user?.email);
@@ -54,7 +61,7 @@ export default function MathPage() {
   // Visible per-question countdown. Ticks every 200ms toward a fixed deadline; when it
   // hits zero the question counts as incorrect and the choice hint is shown.
   useEffect(() => {
-    if (phase !== 'input' || !question || stopped) { setSecondsLeft(null); return; }
+    if (phase !== 'input' || !question || stopped || drill) { setSecondsLeft(null); return; }
     const totalMs = timerTotal * 1000;
     const deadline = Date.now() + totalMs;
     setSecondsLeft(timerTotal);
@@ -73,7 +80,7 @@ export default function MathPage() {
     };
     id = setInterval(tick, 200);
     return () => clearInterval(id);
-  }, [phase, question, stopped, timerTotal, submitAnswer]);
+  }, [phase, question, stopped, timerTotal, submitAnswer, drill]);
 
   if (loading) {
     return <div className="p-4 pt-10 text-center text-slate-400">Loading…</div>;
@@ -192,26 +199,30 @@ export default function MathPage() {
 
         {/* Operation picker with per-mode mastery + points-left; the timed drills sit
             in the same grid as their own special tiles. */}
-        <OpGrid ops={OPS} perOpStats={perOpStats} op={op} setOp={setOp}>
-          <Link
-            to="/math/zigzag"
-            className="rounded-xl p-2.5 flex flex-col justify-center gap-1 text-white bg-gradient-to-br from-violet-500 to-fuchsia-500 hover:opacity-90 transition"
+        <OpGrid ops={OPS} perOpStats={perOpStats} op={drill ? null : op} setOp={selectOp}>
+          <button
+            type="button"
+            onClick={() => setDrill('zigzag')}
+            className={`rounded-xl p-2.5 flex flex-col justify-center gap-1 text-left text-white bg-gradient-to-br from-violet-500 to-fuchsia-500 hover:opacity-90 transition ${drill === 'zigzag' ? 'ring-2 ring-offset-1 ring-violet-400' : ''}`}
           >
             <span className="flex items-center gap-1 font-bold text-sm"><Zap size={16} /> Zigzag</span>
             <span className="text-[10px] text-white/85">timed · {user?.grade === 2 || user?.grade === 3 ? '2-digit add' : '3-digit add'}</span>
-          </Link>
-          <Link
-            to="/math/stepmul"
-            className="rounded-xl p-2.5 flex flex-col justify-center gap-1 text-white bg-gradient-to-br from-sky-500 to-cyan-500 hover:opacity-90 transition"
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrill('stepmul')}
+            className={`rounded-xl p-2.5 flex flex-col justify-center gap-1 text-left text-white bg-gradient-to-br from-sky-500 to-cyan-500 hover:opacity-90 transition ${drill === 'stepmul' ? 'ring-2 ring-offset-1 ring-sky-400' : ''}`}
           >
             <span className="flex items-center gap-1 font-bold text-sm"><Asterisk size={16} /> Step ×</span>
             <span className="text-[10px] text-white/85">timed · 2-digit × 1</span>
-          </Link>
+          </button>
         </OpGrid>
       </header>
 
-      {/* Practice card */}
-      {!stopped ? (
+      {/* Practice card — a timed drill takes over the card in place when its tile is picked. */}
+      {drill ? (
+        drill === 'zigzag' ? <Zigzag embedded /> : <StepMul embedded />
+      ) : !stopped ? (
         <div className="relative overflow-hidden bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4">
           <ComboCelebrate burstKey={burst} big={bigBurst} />
           {question ? (

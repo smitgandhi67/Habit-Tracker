@@ -54,7 +54,7 @@ function postZigzag(q, answer, dateStr) {
   });
 }
 
-export default function Zigzag() {
+export default function Zigzag({ embedded = false }) {
   const { user } = useAuth();
   const timerTotal = timerFor(user?.grade);
   const dateStr = format(new Date(), 'yyyy-MM-dd');
@@ -164,27 +164,13 @@ export default function Zigzag() {
     inputRef.current?.focus();
   }
 
-  return (
-    <div className="p-4 pb-28">
-      <header className="pt-4 mb-4">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
-            <Zap className="text-violet-500" /> Zigzag
-          </h1>
-          <Link
-            to="/math"
-            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
-          >
-            <ArrowLeft size={16} /> Math
-          </Link>
-        </div>
-        <p className="text-slate-400 text-sm mt-1">
-          {question.c != null ? 'Add three 3-digit numbers' : 'Add two 2-digit numbers'} · {timerTotal}s each · first 20/day earn ⭐15
-        </p>
-      </header>
+  const subtitle = `${question.c != null ? 'Add three 3-digit numbers' : 'Add two 2-digit numbers'} · ${timerTotal}s each · first 20/day earn ⭐15`;
 
-      {/* Practice card */}
+  // The practice card is shared by the standalone page and the embedded (inline on
+  // /math) form; embedded shows a compact subtitle in place of the page header.
+  const card = (
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4">
+        {embedded && <p className="text-center text-xs text-slate-400 mb-3">{subtitle}</p>}
         {/* Column-addition prompt */}
         <div className="flex justify-center">
           <div className="text-5xl font-extrabold text-slate-800 tracking-tight tabular-nums text-right leading-tight">
@@ -273,6 +259,28 @@ export default function Zigzag() {
           <span><b className="text-violet-600">+{session.points}</b> points</span>
         </div>
       </div>
+  );
+
+  if (embedded) return card;
+
+  return (
+    <div className="p-4 pb-28">
+      <header className="pt-4 mb-4">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
+            <Zap className="text-violet-500" /> Zigzag
+          </h1>
+          <Link
+            to="/math"
+            className="flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700 shrink-0"
+          >
+            <ArrowLeft size={16} /> Math
+          </Link>
+        </div>
+        <p className="text-slate-400 text-sm mt-1">{subtitle}</p>
+      </header>
+
+      {card}
 
       {/* Wallet balance */}
       {balance != null && (
