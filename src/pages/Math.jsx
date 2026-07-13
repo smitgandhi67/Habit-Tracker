@@ -93,7 +93,11 @@ export default function MathPage() {
   // Fixed prefix shown before the input for decimal types (e.g. "0." for fractions).
   const answerPrefix = question ? (getType(question.op).answerPrefix?.(question.a, question.b) || '') : '';
   const goal = dailyGoalFor(user?.grade);
-  const totalPotential = perOpStats.reduce((sum, s) => sum + s.potential, 0);
+  // Mixed is a mastery mode — locked until Percents + Frac→Dec are fully mastered.
+  const statByOp = new Map(perOpStats.map(s => [s.op, s]));
+  const mixUnlocked = statByOp.get('pct')?.masteryPct === 100 && statByOp.get('fdec')?.masteryPct === 100;
+  const lockedOps = new Set(mixUnlocked ? [] : ['mix']);
+  const totalPotential = perOpStats.filter(s => !lockedOps.has(s.op)).reduce((sum, s) => sum + s.potential, 0);
 
   function grade(value) {
     if (phase !== 'input' || value === '' || !question) return;
@@ -199,7 +203,7 @@ export default function MathPage() {
 
         {/* Operation picker with per-mode mastery + points-left; the timed drills sit
             in the same grid as their own special tiles. */}
-        <OpGrid ops={OPS} perOpStats={perOpStats} op={drill ? null : op} setOp={selectOp}>
+        <OpGrid ops={OPS} perOpStats={perOpStats} op={drill ? null : op} setOp={selectOp} lockedOps={lockedOps}>
           <button
             type="button"
             onClick={() => setDrill('zigzag')}
@@ -271,7 +275,7 @@ export default function MathPage() {
                   <input
                     ref={inputRef}
                     type="number"
-                    inputMode={answerPrefix ? 'decimal' : 'numeric'}
+                    inputMode={(answerPrefix || getType(question.op).decimalInput) ? 'decimal' : 'numeric'}
                     value={typed}
                     readOnly={phase === 'wrong'}
                     onChange={e => handleType(e.target.value)}
