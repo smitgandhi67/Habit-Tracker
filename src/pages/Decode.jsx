@@ -4,6 +4,8 @@ import { useDecode } from '../hooks/useDecode';
 import { getRoot } from '../lib/roots';
 import ConceptIntro from '../components/decode/ConceptIntro';
 import FirstExposure from '../components/decode/FirstExposure';
+import FreeGen from '../components/decode/FreeGen';
+import KeywordRecall from '../components/decode/KeywordRecall';
 
 // Word Decoder practice page. Runs the one-time concept intro, then works through the
 // server-scheduled queue of due roots, firing the right interaction for each root's rung.
@@ -74,6 +76,10 @@ export default function DecodePage() {
 
           {current.interaction === 'first_exposure' ? (
             <FirstExposure root={getRoot(current.rootId)} onComplete={completeExposure} submitting={submitting} />
+          ) : current.interaction === 'free_gen' ? (
+            <FreeGen key={current.rootId} root={getRoot(current.rootId)} submit={(p) => dec.submit(current, p)} onNext={dec.next} />
+          ) : current.interaction === 'keyword_recall' ? (
+            <KeywordRecall key={current.rootId} root={getRoot(current.rootId)} submit={(p) => dec.submit(current, p)} onNext={dec.next} />
           ) : (
             <ReviewPlaceholder interaction={current.interaction} onSkip={dec.next} />
           )}
