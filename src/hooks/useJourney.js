@@ -18,9 +18,9 @@ export function useJourney(isAdmin) {
 
   useEffect(() => {
     if (!isAdmin) return;
-    apiFetch('/api/math/admin/users')
+    apiFetch('/api/math/parent/children')
       .then(list => setUsers(list))
-      .catch(() => toast.error('Failed to load users'));
+      .catch(() => toast.error('Failed to load children'));
   }, [isAdmin]);
 
   const load = useCallback(async (userId) => {
