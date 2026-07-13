@@ -8,6 +8,8 @@ import FreeGen from '../components/decode/FreeGen';
 import KeywordRecall from '../components/decode/KeywordRecall';
 import DecodeChallenge from '../components/decode/DecodeChallenge';
 import DecodeStatsHeader from '../components/decode/DecodeStatsHeader';
+import WeekChart from '../components/decode/WeekChart';
+import { Download, RotateCcw } from 'lucide-react';
 
 // Word Decoder practice page. Runs the one-time concept intro, then works through the
 // server-scheduled queue of due roots, firing the right interaction for each root's rung.
@@ -99,6 +101,36 @@ export default function DecodePage() {
         </div>
       ) : (
         <div className="py-16 text-center text-slate-400 text-sm">Nothing to practice right now.</div>
+      )}
+
+      {introSeen && (
+        <section className="mt-6 mb-4 rounded-2xl border border-slate-100 bg-white p-4">
+          <WeekChart refreshKey={session.answered} />
+          <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+            {[
+              ['Mastered', summary.mastered, 'text-emerald-600'],
+              ['Decoding', summary.decoding, 'text-amber-600'],
+              ['Learning', summary.learning, 'text-sky-600'],
+              ['To go', summary.new, 'text-slate-400'],
+            ].map(([label, val, color]) => (
+              <div key={label} className="rounded-xl bg-slate-50 py-2">
+                <div className={`text-lg font-black tabular-nums ${color}`}>{val}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <button onClick={dec.exportData} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700">
+              <Download size={14} /> Export progress
+            </button>
+            <button
+              onClick={() => { if (window.confirm('Reset ALL Word Decoder progress? Your points are kept, but every root goes back to the start.')) dec.reset(); }}
+              className="flex items-center gap-1.5 text-xs font-semibold text-rose-400 hover:text-rose-600"
+            >
+              <RotateCcw size={14} /> Reset
+            </button>
+          </div>
+        </section>
       )}
     </div>
   );

@@ -89,6 +89,37 @@ export function useDecode() {
     await load();
   }, [idx, queue.length, load]);
 
+  // Download the child's full decoding record as a JSON file.
+  const exportData = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/decode/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `word-decoder-progress-${today}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(String(err.message || 'Export failed').slice(0, 120));
+    }
+  }, [today]);
+
+  // Wipe all decoding progress (mastery + daily stats) and start over. Points wallet kept.
+  const reset = useCallback(async () => {
+    try {
+      await apiFetch('/api/decode/reset', { method: 'DELETE' });
+      attempted.current = new Set();
+      setSession({ answered: 0, points: 0, graduated: 0 });
+      setLoading(true);
+      await load();
+      toast.success('Progress reset');
+      return true;
+    } catch (err) {
+      toast.error(String(err.message || 'Reset failed').slice(0, 120));
+      return false;
+    }
+  }, [load]);
+
   const current = queue[idx] || null;
   const caughtUp = !loading && queue.length === 0;
 
@@ -96,6 +127,6 @@ export function useDecode() {
     loading, current, queue, idx,
     today: today_, cap, summary, reward, session,
     caughtUp, introSeen, markIntroSeen,
-    submit, next, reload: load,
+    submit, next, reload: load, exportData, reset,
   };
 }

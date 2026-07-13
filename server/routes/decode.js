@@ -199,4 +199,30 @@ router.get('/progress', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/decode/export — the child's full decoding record (mastery rows + daily stats)
+// as JSON, for download/backup. Does not include the shared wallet (that's the math side).
+router.get('/export', async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const [roots, days] = await Promise.all([
+      RootMastery.find({ userId }).select('-__v -userId').lean(),
+      DecodeDailyStat.find({ userId }).select('date attempted correct points newRoots').sort({ date: 1 }).lean(),
+    ]);
+    res.json({ exportedAt: new Date().toISOString(), rootsTotal: ROOTS.length, mastery: roots, days });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/decode/reset — wipe this child's decoding progress (mastery + daily stats)
+// so they can start over. The shared points wallet is intentionally left untouched.
+router.delete('/reset', async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    await Promise.all([
+      RootMastery.deleteMany({ userId }),
+      DecodeDailyStat.deleteMany({ userId }),
+    ]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
