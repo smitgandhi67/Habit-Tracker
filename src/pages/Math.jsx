@@ -6,6 +6,7 @@ import { useMath } from '../hooks/useMath';
 import { choicesForQuestion } from '../lib/mathFacts';
 import { affordableQty, pointsForOp } from '../lib/mathRewards';
 import { TYPES, OP_KEYS, getType, gradeAnswer } from '../lib/questionTypes';
+import FORMULAS from '../data/formulas.json' with { type: 'json' };
 import { timerSecondsFor } from '../lib/mathTimer';
 import { useAuth } from '../context/AuthContext';
 import { useMathProgress } from '../hooks/useMathProgress';
@@ -42,6 +43,7 @@ export default function MathPage() {
   const [burst, setBurst] = useState(0);       // bump to re-fire the confetti overlay
   const [bigBurst, setBigBurst] = useState(false);
   const [drill, setDrill] = useState(null);    // null | 'zigzag' | 'stepmul' — inline timed drill
+  const [picked, setPicked] = useState(null);  // formula deck: the chosen option's card index
   const inputRef = useRef(null);
 
   // Switching operation starts a fresh combo — a run is within one mode.
@@ -49,7 +51,7 @@ export default function MathPage() {
 
   // Picking a fact operation leaves any drill and swaps the question in place, resetting
   // the card to a fresh input phase.
-  function selectOp(k) { setDrill(null); setTyped(''); setPhase('input'); setOp(k); }
+  function selectOp(k) { setDrill(null); setTyped(''); setPicked(null); setPhase('input'); setOp(k); }
 
   const choices = useMemo(() => choicesForQuestion(question), [question]);
   const timerTotal = timerSecondsFor(user?.email);
@@ -61,7 +63,7 @@ export default function MathPage() {
   // Visible per-question countdown. Ticks every 200ms toward a fixed deadline; when it
   // hits zero the question counts as incorrect and the choice hint is shown.
   useEffect(() => {
-    if (phase !== 'input' || !question || stopped || drill) { setSecondsLeft(null); return; }
+    if (phase !== 'input' || !question || stopped || drill || getType(question.op).choicesOnly) { setSecondsLeft(null); return; }
     const totalMs = timerTotal * 1000;
     const deadline = Date.now() + totalMs;
     setSecondsLeft(timerTotal);
@@ -92,6 +94,9 @@ export default function MathPage() {
   const opLabel = OPS.find(o => o.key === op)?.label || 'Math';
   // Fixed prefix shown before the input for decimal types (e.g. "0." for fractions).
   const answerPrefix = question ? (getType(question.op).answerPrefix?.(question.a, question.b) || '') : '';
+  // Formula deck is multiple-choice only (no typed entry); its prompt is text, not a number.
+  const isChoiceOnly = !!question && !!getType(question.op).choicesOnly;
+  const formulaTopic = isChoiceOnly ? FORMULAS[question.a]?.topic : null;
   const goal = dailyGoalFor(user?.grade);
   // Mixed is a mastery mode — locked until Percents + Frac→Dec are fully mastered.
   const statByOp = new Map(perOpStats.map(s => [s.op, s]));
@@ -170,6 +175,18 @@ export default function MathPage() {
     inputRef.current?.focus();
   }
 
+  // Formula deck (multiple-choice recall): picking an option grades it (first attempt),
+  // shows the correct formula, then advances. `value` is the option's card index; the
+  // grader accepts it when it equals the question's own index.
+  function pickFormula(value) {
+    if (phase !== 'input' || !question) return;
+    setPicked(value);
+    const res = submitAnswer(value, true);
+    setPhase(res.correct ? 'right' : 'wrong');
+    if (res.correct) celebrateCorrect(); else setCombo(0);
+    setTimeout(() => { setPicked(null); setPhase('input'); advance(); }, res.correct ? 800 : 1700);
+  }
+
   return (
     <div className="p-4 pb-28">
       <header className="pt-4 mb-4">
@@ -241,7 +258,12 @@ export default function MathPage() {
                 </div>
               )}
               <div className="text-center">
-                <div className="text-6xl font-extrabold text-slate-800 tracking-tight tabular-nums">
+                {isChoiceOnly && formulaTopic && (
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-blue-500 mb-1">
+                    {formulaTopic === 'prealg' ? 'Pre-algebra' : formulaTopic === 'algebra' ? 'Algebra' : 'Geometry'}
+                  </div>
+                )}
+                <div className={`font-extrabold text-slate-800 tracking-tight ${isChoiceOnly ? 'text-2xl leading-snug px-1' : 'text-6xl tabular-nums'}`}>
                   {question.display}
                 </div>
               </div>
@@ -267,61 +289,99 @@ export default function MathPage() {
                   editable+focused: iOS Safari hides the keypad the instant a focused field
                   turns readOnly, so keeping it editable is what holds the numpad open on
                   iPad through the pause and into the next question. */}
-              <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {answerPrefix && (
-                    <span className="text-4xl font-bold text-slate-400 tabular-nums">{answerPrefix}</span>
-                  )}
-                  <input
-                    ref={inputRef}
-                    type="number"
-                    inputMode={(answerPrefix || getType(question.op).decimalInput) ? 'decimal' : 'numeric'}
-                    value={typed}
-                    readOnly={phase === 'wrong'}
-                    onChange={e => handleType(e.target.value)}
-                    placeholder="?"
-                    className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
-                      phase === 'right'
-                        ? 'border-green-400 bg-green-50 text-green-600'
-                        : phase === 'wrong'
-                          ? 'border-red-300 bg-red-50 text-red-500'
-                          : 'border-slate-200 focus:border-violet-400'
-                    }`}
-                  />
-                </div>
-                {phase === 'input' && (
-                  <button
-                    type="submit"
-                    className="bg-violet-600 hover:bg-violet-700 text-white font-bold text-lg rounded-2xl px-8 py-3 transition-colors"
-                  >
-                    Check
-                  </button>
-                )}
-                {phase === 'right' && (
-                  <div className="flex items-center gap-1 text-green-600 font-bold text-lg">
-                    <Check /> Correct! +{pointsForOp(question.op)} {pointsForOp(question.op) === 1 ? 'point' : 'points'}
-                  </div>
-                )}
-              </form>
-
-              {phase === 'wrong' && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-center gap-1 text-red-500 font-semibold mb-3">
-                    <X size={18} /> Not quite — tap the right answer
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {choices.map(c => (
+              {isChoiceOnly ? (
+                /* Formula deck — multiple-choice recall (no typed entry). Pick an option,
+                   see the correct formula highlighted, then advance. */
+                <div className="mt-6 flex flex-col gap-2.5">
+                  {choices.map(opt => {
+                    const isCorrect = opt.value === question.a;
+                    const isPicked = picked === opt.value;
+                    const reveal = phase !== 'input';
+                    const cls = reveal && isCorrect
+                      ? 'border-green-400 bg-green-50 text-green-700'
+                      : isPicked && !isCorrect
+                        ? 'border-red-300 bg-red-50 text-red-500'
+                        : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700';
+                    return (
                       <button
-                        key={c}
+                        key={opt.value}
                         type="button"
-                        onClick={() => pickChoice(c)}
-                        className="text-2xl font-bold tabular-nums rounded-2xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50 py-4 transition-colors"
+                        disabled={reveal}
+                        onClick={() => pickFormula(opt.value)}
+                        className={`text-left text-lg font-semibold rounded-2xl border-2 py-3 px-4 transition-colors ${cls}`}
                       >
-                        {c}
+                        {opt.label}
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
+                  {phase === 'right' && (
+                    <div className="mt-1 flex items-center justify-center gap-1 text-green-600 font-bold">
+                      <Check /> Correct! +{pointsForOp('formula')} points
+                    </div>
+                  )}
+                  {phase === 'wrong' && (
+                    <div className="mt-1 text-center text-sm text-slate-500">The correct formula is highlighted — next one coming…</div>
+                  )}
                 </div>
+              ) : (
+                <>
+                  <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      {answerPrefix && (
+                        <span className="text-4xl font-bold text-slate-400 tabular-nums">{answerPrefix}</span>
+                      )}
+                      <input
+                        ref={inputRef}
+                        type="number"
+                        inputMode={(answerPrefix || getType(question.op).decimalInput) ? 'decimal' : 'numeric'}
+                        value={typed}
+                        readOnly={phase === 'wrong'}
+                        onChange={e => handleType(e.target.value)}
+                        placeholder="?"
+                        className={`w-40 text-center text-4xl font-bold rounded-2xl border-2 py-3 outline-none tabular-nums ${
+                          phase === 'right'
+                            ? 'border-green-400 bg-green-50 text-green-600'
+                            : phase === 'wrong'
+                              ? 'border-red-300 bg-red-50 text-red-500'
+                              : 'border-slate-200 focus:border-violet-400'
+                        }`}
+                      />
+                    </div>
+                    {phase === 'input' && (
+                      <button
+                        type="submit"
+                        className="bg-violet-600 hover:bg-violet-700 text-white font-bold text-lg rounded-2xl px-8 py-3 transition-colors"
+                      >
+                        Check
+                      </button>
+                    )}
+                    {phase === 'right' && (
+                      <div className="flex items-center gap-1 text-green-600 font-bold text-lg">
+                        <Check /> Correct! +{pointsForOp(question.op)} {pointsForOp(question.op) === 1 ? 'point' : 'points'}
+                      </div>
+                    )}
+                  </form>
+
+                  {phase === 'wrong' && (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-center gap-1 text-red-500 font-semibold mb-3">
+                        <X size={18} /> Not quite — tap the right answer
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {choices.map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => pickChoice(c)}
+                            className="text-2xl font-bold tabular-nums rounded-2xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50 py-4 transition-colors"
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Live session counters */}
