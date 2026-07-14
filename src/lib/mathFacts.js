@@ -4,6 +4,7 @@
 
 import { getType, factKeyFor as registryFactKey } from './questionTypes.js';
 import { initialLevelFor } from './mathSchedule.js';
+import FORMULAS from '../data/formulas.json' with { type: 'json' };
 
 export const MIN_OPERAND = 2;
 export const MAX_OPERAND = 20;
@@ -92,7 +93,37 @@ export function choicesForQuestion(q) {
   if (q.op === 'fdec') return decimalChoices(q.answer);
   if (q.op === 'pct') return choicesForAnswer(q.answer, 5, 10);       // percent: nudge by 5/10
   if (q.op === 'mix') return q.b === 1 ? choicesForAnswer(q.answer, 5, 10) : decimalChoices(q.answer);
+  if (q.op === 'formula') return formulaChoices(q);
   return choicesForAnswer(q.answer, q.a, q.b);
+}
+
+function shuffleArr(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Four options for a formula-recall card: the correct formula string + three DISTINCT
+// distractor formulas (preferring the same topic so they're plausible near-misses). Each
+// option carries its card index as `value`, so the correct option's value === q.a and the
+// numeric grader (formula.answer(a) === a) accepts exactly one. Returns {value,label}.
+function formulaChoices(q) {
+  const correct = FORMULAS[q.a];
+  const eligible = FORMULAS.map((c, i) => ({ c, i })).filter(({ c, i }) => i !== q.a && c.answer !== correct.answer);
+  const sameTopic = eligible.filter(({ c }) => c.topic === correct.topic);
+  const pool = shuffleArr(sameTopic.length >= 3 ? sameTopic : eligible);
+  const picks = [];
+  const seen = new Set([correct.answer]);
+  for (const { c, i } of pool) {
+    if (picks.length >= 3) break;
+    if (seen.has(c.answer)) continue;
+    seen.add(c.answer);
+    picks.push({ value: i, label: c.answer });
+  }
+  return shuffleArr([{ value: q.a, label: correct.answer }, ...picks]);
 }
 
 // Four decimal options around a value in (0,1), 3-dp, distractors ≥0.05 away so only the

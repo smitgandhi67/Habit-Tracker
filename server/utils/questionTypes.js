@@ -29,6 +29,9 @@ const MIX = FDEC_SET.map(([n, d]) => ({ n, d, dec: n / d, pct: (100 * n) / d, ha
 const PCT_KEYS = new Set(PCT_SET.map(([a, b]) => `${a}/${b}`));
 const FDEC_KEYS = new Set(FDEC_SET.map(([a, b]) => `${a}/${b}`));
 
+// NCSSM-prep formula-recall deck (MIRROR of src/data/formulas.json via the bundled copy).
+const FORMULAS = require('../data/formulas.json');
+
 const TYPES = {
   mul: {
     key: 'mul', points: 1, commutative: true,
@@ -146,6 +149,17 @@ const TYPES = {
       });
       return f;
     },
+  },
+  formula: {
+    // Formula-recall deck — MC only; `a` indexes formulas.json, the correct answer is the
+    // card's own index. Server trust boundary: re-checks the submitted index equals `a`.
+    key: 'formula', points: 3, commutative: false,
+    factKey: (a) => `formula:${FORMULAS[a].id}`,
+    answer: (a) => a,
+    isCorrect: (a, b, ans) => ans === a,
+    validate: (a, b) => isInt(a) && a >= 0 && a < FORMULAS.length && (b === 0 || b == null),
+    isTrivial: () => false,
+    generate: () => FORMULAS.map((c, i) => ({ a: i, b: 0, key: `formula:${c.id}` })),
   },
 };
 

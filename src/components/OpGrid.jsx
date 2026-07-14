@@ -4,7 +4,7 @@ import { Lock } from 'lucide-react';
 const OP_COLOR = {
   mul: '#7c3aed', add: '#059669', sub: '#e11d48', div: '#0284c7',
   sq: '#d97706', sqrt: '#ea580c', cube: '#c026d3', cbrt: '#db2777', frac: '#0d9488',
-  pct: '#0891b2', fdec: '#4f46e5', mix: '#9333ea',
+  pct: '#0891b2', fdec: '#4f46e5', mix: '#9333ea', formula: '#1d4ed8',
 };
 
 // Operation picker where each mode shows its own accent, a mastery bar (mastered / total

@@ -8,6 +8,7 @@
 // KEEP grading rules IN SYNC with server/utils/questionTypes.js.
 
 import { mulMaxForGrade, addSubMaxForGrade, squareMaxForGrade, cubeMaxForGrade } from './mathGrades.js';
+import FORMULAS from '../data/formulas.json' with { type: 'json' };
 
 const MUL_MAX = 20;
 const SQ_MAX = 50;
@@ -185,6 +186,21 @@ export const TYPES = {
       if (Number.isNaN(val)) return false;
       return b === 1 ? Math.abs(val - MIX[a].pct) <= PCT_TOL : Math.abs(val - MIX[a].dec) <= FRAC_TOL;
     },
+  },
+  formula: {
+    // NCSSM-prep formula recall (pre-algebra / algebra / geometry). Multiple-choice only:
+    // `a` indexes the formulas deck, the prompt is the question, and the "answer" is the
+    // card's own index — the child picks the correct formula string and the option carries
+    // its card index, so a correct pick submits `a`. Grading + Leitner mastery reuse the
+    // numeric pipeline (index equality); no typed entry (choicesOnly).
+    key: 'formula', label: 'Formulas', symbol: 'ƒ', commutative: false, points: 3,
+    choicesOnly: true, autoSubmit: false,
+    display: (a) => FORMULAS[a].prompt,
+    maxForGrade: () => FORMULAS.length,
+    factKey: (a) => `formula:${FORMULAS[a].id}`,
+    answer: (a) => a,
+    isTrivial: () => false,
+    generate: () => FORMULAS.map((c, i) => ({ a: i, b: 0, key: `formula:${c.id}` })),
   },
 };
 

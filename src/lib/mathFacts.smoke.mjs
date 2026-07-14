@@ -17,7 +17,7 @@ function assert(label, ok, detail) {
 function eq(label, a, b) { assert(label, a === b, `expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
 
 // registry shape
-eq('registry has 12 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac,pct,fdec,mix');
+eq('registry has 13 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac,pct,fdec,mix,formula');
 
 // mul universe includes 0/1: operands 0..20 → 231 deduped facts.
 eq('generateAllFacts(20) incl 0/1', generateAllFacts(20).length, 231);
@@ -113,6 +113,15 @@ assert('grade mix decimal 0.375 for 3/8', gradeAnswer('mix', idx38, 0, parseType
 assert('reject mix percent 40 for 3/8', !gradeAnswer('mix', idx38, 1, 40), 'wrongly accepted');
 eq('mix choices (percent) one correct', choicesForQuestion({ op: 'mix', a: idx38, b: 1, answer: 37.5 }).filter(c => gradeAnswer('mix', idx38, 1, c)).length, 1);
 eq('mix choices (decimal) one correct', choicesForQuestion({ op: 'mix', a: idx38, b: 0, answer: 0.375 }).filter(c => gradeAnswer('mix', idx38, 0, c)).length, 1);
+
+// formula: MC recall deck — 4 labelled options, exactly one correct (value === card index).
+eq('formula answer is the card index', TYPES.formula.answer(7), 7);
+eq('formula generate count', generateFacts('formula', 12).length, 50);
+const fCh = choicesForQuestion({ op: 'formula', a: 3, b: 0, answer: 3 });
+eq('formula choices length 4', fCh.length, 4);
+assert('formula choices are labelled objects', fCh.every(c => typeof c.label === 'string' && Number.isInteger(c.value)), JSON.stringify(fCh));
+eq('formula choices exactly one correct', fCh.filter(c => gradeAnswer('formula', 3, 0, c.value)).length, 1);
+eq('formula choices distinct labels', new Set(fCh.map(c => c.label)).size, 4);
 
 // factKeyFor round-trips / canonicalization for binary ops.
 eq('factKeyFor mul commutes', factKeyFor('mul', 8, 7), canonicalKey(8, 7));
