@@ -5,9 +5,9 @@ import { Check, X, Clock, Zap, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 
-// Grades 2–3 get 20s per question; grades 4–5 (and unset grades) get 10s.
-function timerFor(grade) {
-  return grade === 2 || grade === 3 ? 20 : 10;
+// 20s per question for everyone (matches step-multiplication).
+function timerFor() {
+  return 20;
 }
 
 const rand3 = () => 100 + Math.floor(Math.random() * 900); // 100..999
