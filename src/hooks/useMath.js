@@ -7,6 +7,7 @@ import { pickDueQuestion, generateFacts } from '../lib/mathFacts';
 import { pointsForOp } from '../lib/mathRewards';
 import { effectivePoints } from '../lib/mathBonus';
 import { OP_KEYS, getType, parseTypedAnswer, gradeAnswer } from '../lib/questionTypes';
+import { mathBufferKey as bufferKey } from '../lib/mathSync';
 
 const FLUSH_AT = 1; // flush after every answer so points hit the DB immediately (never stranded in the buffer)
 const EMPTY_SUPPRESSED = Object.fromEntries(OP_KEYS.map(k => [k, []]));
@@ -15,7 +16,6 @@ const emptyAnsweredSets = () => Object.fromEntries(OP_KEYS.map(k => [k, new Set(
 
 // localStorage helpers (namespaced per user so a shared device can't leak data).
 const stateKey = (uid, date) => `math:state:${uid}:${date}`;
-const bufferKey = (uid) => `math:buffer:${uid}`;
 const answeredKey = (uid, date) => `math:answered:${uid}:${date}`; // facts earned today, per day
 function readLS(key) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
