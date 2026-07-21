@@ -8,7 +8,7 @@ import { pointsForOp } from '../lib/mathRewards';
 import { effectivePoints } from '../lib/mathBonus';
 import { OP_KEYS, getType, parseTypedAnswer, gradeAnswer } from '../lib/questionTypes';
 
-const FLUSH_AT = 8; // buffered answers before an automatic background flush
+const FLUSH_AT = 1; // flush after every answer so points hit the DB immediately (never stranded in the buffer)
 const EMPTY_SUPPRESSED = Object.fromEntries(OP_KEYS.map(k => [k, []]));
 const EMPTY_LEVELS = Object.fromEntries(OP_KEYS.map(k => [k, {}]));
 const emptyAnsweredSets = () => Object.fromEntries(OP_KEYS.map(k => [k, new Set()]));
@@ -118,6 +118,7 @@ export function useMath() {
     flushing.current = true;
     const batch = buffer.current;
     buffer.current = [];
+    let ok = false;
     try {
       const res = await apiFetch('/api/math/answer/batch', {
         method: 'POST',
@@ -131,6 +132,7 @@ export function useMath() {
       // Keep the cached state roughly fresh for instant next paint.
       const cached = readLS(stateKey(uid, today));
       if (cached) writeLS(stateKey(uid, today), { ...cached, reward: res.reward, today: res.today, suppressedByOp: res.suppressedByOp, levelsByOp: res.levelsByOp });
+      ok = true;
     } catch {
       // Re-queue so nothing is lost; will retry on next flush / reload.
       buffer.current = batch.concat(buffer.current);
@@ -138,6 +140,10 @@ export function useMath() {
     } finally {
       flushing.current = false;
     }
+    // Drain answers that arrived while this request was in flight, so the tail of a fast
+    // streak posts right away instead of waiting for the next answer or page exit. Only on
+    // success — on failure we wait for the next trigger rather than hot-looping the network.
+    if (ok && buffer.current.length) flush();
   }, [uid, today, applySchedule]);
 
   // Mount: instant paint from cache, recover any unflushed buffer, then revalidate.
