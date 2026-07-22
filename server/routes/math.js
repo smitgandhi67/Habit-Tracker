@@ -287,10 +287,10 @@ router.post('/answer/batch', async (req, res, next) => {
 const DRILL_TIER2_POINTS   = 1;
 const ZIGZAG_TIER1_POINTS  = 15, ZIGZAG_TIER1_LIMIT  = 20;
 const STEPMUL_TIER1_POINTS = 10, STEPMUL_TIER1_LIMIT = 20;
-const isZigzagOperand3  = (v) => Number.isInteger(v) && v >= 100 && v <= 999;
-const isZigzagOperand2  = (v) => Number.isInteger(v) && v >= 10 && v <= 99; // grades 2-3
-const isStepmulTwoDigit = (v) => Number.isInteger(v) && v >= 26 && v <= 99; // "two-digit >25"
-const isStepmulOneDigit = (v) => Number.isInteger(v) && v >= 2 && v <= 9;   // non-trivial one-digit
+const isZigzag2Digit        = (v) => Number.isInteger(v) && v >= 10 && v <= 99;  // two-operand form (unset/older grades)
+const isZigzagTripleOperand = (v) => Number.isInteger(v) && v >= 10 && v <= 999; // three-operand form: grade 2 = three 2-digit, grade 4-5 = three 3-digit
+const isStepmulOperandA     = (v) => Number.isInteger(v) && v >= 26 && v <= 999; // two-digit (>25) OR three-digit (grade 4+)
+const isStepmulOneDigit     = (v) => Number.isInteger(v) && v >= 2 && v <= 9;    // non-trivial one-digit
 
 // Record one drill attempt and credit the tiered points on a first-try-correct answer.
 // `counterField` is the per-day count of correct answers for this drill (drives the
@@ -328,13 +328,13 @@ router.post('/zigzag/answer', async (req, res, next) => {
     }
     let correct;
     if (c === null || c === undefined) {
-      if (!isZigzagOperand2(a) || !isZigzagOperand2(b)) {
+      if (!isZigzag2Digit(a) || !isZigzag2Digit(b)) {
         return res.status(400).json({ error: 'need two 2-digit operands, a numeric answer, and a valid date' });
       }
       correct = a + b === answer;
     } else {
-      if (!isZigzagOperand3(a) || !isZigzagOperand3(b) || !isZigzagOperand3(c)) {
-        return res.status(400).json({ error: 'need three 3-digit operands, a numeric answer, and a valid date' });
+      if (!isZigzagTripleOperand(a) || !isZigzagTripleOperand(b) || !isZigzagTripleOperand(c)) {
+        return res.status(400).json({ error: 'need three 2- or 3-digit operands, a numeric answer, and a valid date' });
       }
       correct = a + b + c === answer;
     }
@@ -348,9 +348,9 @@ router.post('/zigzag/answer', async (req, res, next) => {
 router.post('/stepmul/answer', async (req, res, next) => {
   try {
     const { a, b, answer, date } = req.body || {};
-    if (!isStepmulTwoDigit(a) || !isStepmulOneDigit(b) ||
+    if (!isStepmulOperandA(a) || !isStepmulOneDigit(b) ||
         !Number.isFinite(answer) || !date || !ISO_DATE.test(date)) {
-      return res.status(400).json({ error: 'need a two-digit (>25) operand, a one-digit operand, a numeric answer, and a valid date' });
+      return res.status(400).json({ error: 'need a two-digit (>25) or three-digit operand, a one-digit operand, a numeric answer, and a valid date' });
     }
     const correct = a * b === answer;
     const { award, reward } = await creditDrill(req.user._id, date, correct, 'stepmul', STEPMUL_TIER1_POINTS, STEPMUL_TIER1_LIMIT);

@@ -10,12 +10,20 @@ function timerFor() {
   return 20;
 }
 
-const rand2 = () => 26 + Math.floor(Math.random() * 74); // 26..99 (two-digit > 25)
-const rand1 = () => 2 + Math.floor(Math.random() * 8);   // 2..9 (non-trivial one-digit)
+const rand2 = () => 26 + Math.floor(Math.random() * 74);   // 26..99 (two-digit > 25)
+const rand3 = () => 100 + Math.floor(Math.random() * 900); // 100..999 (three-digit)
+const rand1 = () => 2 + Math.floor(Math.random() * 8);     // 2..9 (non-trivial one-digit)
 
-// A fresh step-multiplication question: two-digit (>25) × one-digit and its product.
-function makeQuestion() {
-  const a = rand2(), b = rand1();
+// Grade 4+ (and unset) mix in three-digit × one-digit questions.
+function isBigEligible(grade) {
+  return grade == null || grade >= 4;
+}
+
+// A fresh step-multiplication question × one-digit and its product. Grade 4+ mixes in
+// three-digit operands (~40%); grades 2-3 stay two-digit (>25).
+function makeQuestion(grade) {
+  const a = (isBigEligible(grade) && Math.random() < 0.4) ? rand3() : rand2();
+  const b = rand1();
   return { a, b, product: a * b, key: `${a}x${b}` };
 }
 
@@ -48,13 +56,14 @@ export default function StepMul({ embedded = false }) {
   const timerTotal = timerFor(user?.grade);
   const dateStr = format(new Date(), 'yyyy-MM-dd');
 
-  const [question, setQuestion] = useState(() => makeQuestion());
+  const [question, setQuestion] = useState(() => makeQuestion(user?.grade));
   const [typed, setTyped] = useState('');
   const [phase, setPhase] = useState('input'); // 'input' | 'right' | 'wrong'
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [session, setSession] = useState({ attempted: 0, correct: 0, points: 0 });
   const [balance, setBalance] = useState(null);
   const inputRef = useRef(null);
+  const answeredRef = useRef(false); // once the kid has answered, stop regenerating on grade load
 
   const choices = useMemo(() => makeChoices(question.product), [question]);
 
@@ -68,10 +77,16 @@ export default function StepMul({ embedded = false }) {
   }, [dateStr]);
 
   const newQuestion = useCallback(() => {
-    setQuestion(makeQuestion());
+    setQuestion(makeQuestion(user?.grade));
     setTyped('');
     setPhase('input');
-  }, []);
+  }, [user?.grade]);
+
+  // Grade resolves after mount; regenerate the first question once it's known (before the
+  // kid has answered) so a lower-grade kid never sees a three-digit first question.
+  useEffect(() => {
+    if (!answeredRef.current) setQuestion(makeQuestion(user?.grade));
+  }, [user?.grade]);
 
   useEffect(() => {
     if (phase === 'input') inputRef.current?.focus();
@@ -88,6 +103,7 @@ export default function StepMul({ embedded = false }) {
       const remMs = deadline - Date.now();
       if (remMs <= 0) {
         clearInterval(id); // stop before the state change re-runs the effect
+        answeredRef.current = true;
         setSession(s => ({ ...s, attempted: s.attempted + 1 }));
         postStepmul(question, -1, dateStr)
           .then(res => { if (typeof res?.reward?.balance === 'number') setBalance(res.reward.balance); })
@@ -105,6 +121,7 @@ export default function StepMul({ embedded = false }) {
   // Grade the typed answer: instant local feedback for the phase, server credits.
   function grade(value) {
     if (phase !== 'input' || value === '' || !question) return;
+    answeredRef.current = true;
     const correct = Number(value) === question.product;
     setSession(s => ({ attempted: s.attempted + 1, correct: s.correct + (correct ? 1 : 0), points: s.points }));
     setPhase(correct ? 'right' : 'wrong');
@@ -143,7 +160,7 @@ export default function StepMul({ embedded = false }) {
     inputRef.current?.focus();
   }
 
-  const subtitle = `Two-digit × one-digit · ${timerTotal}s each · first 20/day earn ⭐10`;
+  const subtitle = `${isBigEligible(user?.grade) ? '2 or 3-digit' : 'Two-digit'} × one-digit · ${timerTotal}s each · first 20/day earn ⭐10`;
 
   // Shared by the standalone page and the embedded (inline on /math) form; embedded
   // shows a compact subtitle in place of the page header.

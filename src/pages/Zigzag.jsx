@@ -13,20 +13,17 @@ function timerFor() {
 const rand3 = () => 100 + Math.floor(Math.random() * 900); // 100..999
 const rand2 = () => 10 + Math.floor(Math.random() * 90);   // 10..99
 
-// Grades 2-3 add two 2-digit numbers; grades 4-5 (and unset grades) add three
+// Grades 2-3 add three 2-digit numbers; grades 4-5 (and unset grades) add three
 // 3-digit numbers.
 function isLowerGrade(grade) {
   return grade === 2 || grade === 3;
 }
 
-// A fresh zigzag question and its sum. `c` is null for the two-operand (grade 2-3)
-// form so the rest of the page can branch on its presence.
+// A fresh zigzag question and its sum: three operands either way — 2-digit for the
+// lower grades (e.g. 22 + 12 + 34), 3-digit for the rest.
 function makeQuestion(grade) {
-  if (isLowerGrade(grade)) {
-    const a = rand2(), b = rand2();
-    return { a, b, c: null, sum: a + b, key: `${a}+${b}` };
-  }
-  const a = rand3(), b = rand3(), c = rand3();
+  const r = isLowerGrade(grade) ? rand2 : rand3;
+  const a = r(), b = r(), c = r();
   return { a, b, c, sum: a + b + c, key: `${a}+${b}+${c}` };
 }
 
@@ -164,7 +161,7 @@ export default function Zigzag({ embedded = false }) {
     inputRef.current?.focus();
   }
 
-  const subtitle = `${question.c != null ? 'Add three 3-digit numbers' : 'Add two 2-digit numbers'} · ${timerTotal}s each · first 20/day earn ⭐15`;
+  const subtitle = `${isLowerGrade(user?.grade) ? 'Add three 2-digit numbers' : 'Add three 3-digit numbers'} · ${timerTotal}s each · first 20/day earn ⭐15`;
 
   // The practice card is shared by the standalone page and the embedded (inline on
   // /math) form; embedded shows a compact subtitle in place of the page header.
