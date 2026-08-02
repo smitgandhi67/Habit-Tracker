@@ -12,6 +12,7 @@ const mathDailyStatSchema = new mongoose.Schema({
   correct:   { type: Number, default: 0 },
   points:    { type: Number, default: 0 },
   zigzag:    { type: Number, default: 0 }, // first-try-correct zigzag answers today (drives the 15→1 point tier)
+  zigzagsub: { type: Number, default: 0 }, // first-try-correct zigzag-subtraction answers today (its own 15→1 tier)
   stepmul:   { type: Number, default: 0 }, // first-try-correct step-multiplication answers today (drives the 10→1 point tier)
 });
 

@@ -280,12 +280,14 @@ router.post('/answer/batch', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Timed drills (zigzag addition, step multiplication). Each is an infinite random
-// pool, so points are tiered per day to stop endless farming at the full rate: the
-// first N first-try-correct answers each earn the drill's tier-1 rate, and every
-// correct answer after that earns DRILL_TIER2_POINTS.
+// Timed drills (zigzag addition, zigzag subtraction, step multiplication). Each is an
+// infinite random pool, so points are tiered per day to stop endless farming at the full
+// rate: the first N first-try-correct answers each earn the drill's tier-1 rate, and every
+// correct answer after that earns DRILL_TIER2_POINTS. Each drill keeps its own daily
+// counter, so the tiers don't share a budget.
 const DRILL_TIER2_POINTS   = 1;
 const ZIGZAG_TIER1_POINTS  = 15, ZIGZAG_TIER1_LIMIT  = 20;
+const ZIGZAGSUB_TIER1_POINTS = 15, ZIGZAGSUB_TIER1_LIMIT = 20;
 const STEPMUL_TIER1_POINTS = 10, STEPMUL_TIER1_LIMIT = 20;
 const isZigzag2Digit        = (v) => Number.isInteger(v) && v >= 10 && v <= 99;  // two-operand form (unset/older grades)
 const isZigzagTripleOperand = (v) => Number.isInteger(v) && v >= 10 && v <= 999; // three-operand form: grade 2 = three 2-digit, grade 4-5 = three 3-digit
@@ -339,6 +341,27 @@ router.post('/zigzag/answer', async (req, res, next) => {
       correct = a + b + c === answer;
     }
     const { award, reward } = await creditDrill(req.user._id, date, correct, 'zigzag', ZIGZAG_TIER1_POINTS, ZIGZAG_TIER1_LIMIT);
+    res.json({ correct, awarded: award, reward });
+  } catch (err) { next(err); }
+});
+
+// POST /api/math/zigzagsub/answer — body { a, b, c, answer, date }. Always the
+// three-operand chain a - b - c (grades 2-3 send 2-digit operands, grades 4-5 3-digit).
+// The client only ever generates questions whose result is positive; the server enforces
+// that too, so a hand-rolled request can't farm points off a trivially-negative chain.
+router.post('/zigzagsub/answer', async (req, res, next) => {
+  try {
+    const { a, b, c, answer, date } = req.body || {};
+    if (!isZigzagTripleOperand(a) || !isZigzagTripleOperand(b) || !isZigzagTripleOperand(c) ||
+        !Number.isFinite(answer) || !date || !ISO_DATE.test(date)) {
+      return res.status(400).json({ error: 'need three 2- or 3-digit operands, a numeric answer, and a valid date' });
+    }
+    const result = a - b - c;
+    if (result <= 0) {
+      return res.status(400).json({ error: 'a - b - c must be positive' });
+    }
+    const correct = result === answer;
+    const { award, reward } = await creditDrill(req.user._id, date, correct, 'zigzagsub', ZIGZAGSUB_TIER1_POINTS, ZIGZAGSUB_TIER1_LIMIT);
     res.json({ correct, awarded: award, reward });
   } catch (err) { next(err); }
 });

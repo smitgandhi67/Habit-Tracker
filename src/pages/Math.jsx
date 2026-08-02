@@ -42,7 +42,7 @@ export default function MathPage() {
   const [combo, setCombo] = useState(0);       // consecutive first-try-correct this session
   const [burst, setBurst] = useState(0);       // bump to re-fire the confetti overlay
   const [bigBurst, setBigBurst] = useState(false);
-  const [drill, setDrill] = useState(null);    // null | 'zigzag' | 'stepmul' — inline timed drill
+  const [drill, setDrill] = useState(null);    // null | 'zigzag' | 'zigzagsub' | 'stepmul' — inline timed drill
   const [picked, setPicked] = useState(null);  // formula deck: the chosen option's card index
   const inputRef = useRef(null);
 
@@ -231,6 +231,14 @@ export default function MathPage() {
           </button>
           <button
             type="button"
+            onClick={() => setDrill('zigzagsub')}
+            className={`rounded-xl p-2.5 flex flex-col justify-center gap-1 text-left text-white bg-gradient-to-br from-rose-500 to-pink-500 hover:opacity-90 transition ${drill === 'zigzagsub' ? 'ring-2 ring-offset-1 ring-rose-400' : ''}`}
+          >
+            <span className="flex items-center gap-1 font-bold text-sm"><Zap size={16} /> Zig Zag − / L-R</span>
+            <span className="text-[10px] text-white/85">timed · {user?.grade === 2 || user?.grade === 3 ? '2-digit sub' : '3-digit sub'}</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setDrill('stepmul')}
             className={`rounded-xl p-2.5 flex flex-col justify-center gap-1 text-left text-white bg-gradient-to-br from-sky-500 to-cyan-500 hover:opacity-90 transition ${drill === 'stepmul' ? 'ring-2 ring-offset-1 ring-sky-400' : ''}`}
           >
@@ -242,7 +250,11 @@ export default function MathPage() {
 
       {/* Practice card — a timed drill takes over the card in place when its tile is picked. */}
       {drill ? (
-        drill === 'zigzag' ? <Zigzag embedded /> : <StepMul embedded />
+        // `key` forces a remount when switching between the two zigzag modes, so a
+        // half-finished addition question can't linger under the subtraction wiring.
+        drill === 'zigzag' || drill === 'zigzagsub'
+          ? <Zigzag key={drill} embedded mode={drill === 'zigzagsub' ? 'sub' : 'add'} />
+          : <StepMul embedded />
       ) : !stopped ? (
         <div className="relative overflow-hidden bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4">
           <ComboCelebrate burstKey={burst} big={bigBurst} />

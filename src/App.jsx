@@ -74,6 +74,7 @@ function AppInner() {
                   <Route path="/math" element={<MathPage />} />
                   <Route path="/decode" element={<DecodePage />} />
                   <Route path="/math/zigzag" element={<Zigzag />} />
+                  <Route path="/math/zigzagsub" element={<Zigzag mode="sub" />} />
                   <Route path="/math/stepmul" element={<StepMul />} />
                   <Route path="/build" element={<Build />} />
                   <Route path="/skills" element={<Skills />} />
