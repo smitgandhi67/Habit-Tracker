@@ -23,6 +23,12 @@ const habitSchema = new mongoose.Schema({
   // Reward points granted each day the habit is fully completed (status 'done').
   // Parent/admin-set only — never editable through the kid's habit CRUD routes.
   points:     { type: Number, default: 0, min: 0 },
+  // Shared-habit auto-approval. When every linked sibling who owns a points-bearing habit
+  // with this same name has completed it for a given day, the whole set is approved without
+  // the parent touching the queue (see utils/autoApprove). Only fires when 2+ siblings share
+  // the habit AND every copy has the flag on — one kid's copy switched off disables the pair.
+  // Parent/admin-set only, like `points`.
+  autoApproveWhenAll: { type: Boolean, default: true },
   config: {
     label: { type: String, trim: true },
     type:  { type: String, enum: ['number', 'time', 'text'] },

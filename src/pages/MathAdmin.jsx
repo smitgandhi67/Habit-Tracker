@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
-import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2, History } from 'lucide-react';
+import { Minus, Plus, RotateCcw, Save, Check, X, Star, Trash2, History, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 import { GRADES } from '../lib/mathGrades';
@@ -127,6 +127,20 @@ export default function MathAdmin() {
     } catch (err) {
       toast.error(String(err.message || 'Failed').slice(0, 120));
     } finally { setBusy(false); }
+  }
+
+  // Off switch for shared-habit auto-approval. Only bites on habits 2+ linked kids share —
+  // the server ignores it for solo habits, so the row copy says "when all kids do it".
+  async function setAutoApprove(habitId, autoApproveWhenAll) {
+    setHabits(hs => hs.map(h => (h._id === habitId ? { ...h, autoApproveWhenAll } : h)));   // optimistic
+    try {
+      await apiFetch(`/api/math/admin/habits/${habitId}/auto-approve`, {
+        method: 'PUT', body: JSON.stringify({ autoApproveWhenAll }),
+      });
+    } catch (err) {
+      setHabits(hs => hs.map(h => (h._id === habitId ? { ...h, autoApproveWhenAll: !autoApproveWhenAll } : h)));
+      toast.error(String(err.message || 'Failed').slice(0, 120));
+    }
   }
 
   async function setGrade(grade) {
@@ -497,15 +511,19 @@ export default function MathAdmin() {
           <h3 className="font-bold text-slate-700 mb-1 flex items-center gap-2">
             <Star size={16} className="text-violet-500" /> Habit points — {selected.name}
           </h3>
-          <p className="text-xs text-slate-400 mb-3">Points earned each day the habit is fully completed (you approve them).</p>
+          <p className="text-xs text-slate-400 mb-3">
+            Points earned each day the habit is fully completed (you approve them). Habits marked{' '}
+            <span className="font-semibold text-slate-500">auto</span> skip the queue once every kid
+            who has that habit is done for the day.
+          </p>
           {habits.length === 0 ? (
             <p className="text-sm text-slate-400">No active habits for this kid.</p>
           ) : (
             <div className="space-y-2">
               {habits.map(h => (
-                <div key={h._id} className="flex items-center gap-2">
+                <div key={h._id} className="flex flex-wrap items-center gap-2">
                   <span className="text-lg select-none">{h.emoji}</span>
-                  <span className="flex-1 text-sm font-medium text-slate-600 truncate">{h.name}</span>
+                  <span className="flex-1 min-w-0 text-sm font-medium text-slate-600 truncate">{h.name}</span>
                   <input
                     type="number"
                     min="0"
@@ -520,6 +538,19 @@ export default function MathAdmin() {
                   >
                     <Save size={14} /> Save
                   </button>
+                  <label
+                    className="flex items-center gap-1.5 basis-full pl-8 text-[11px] font-semibold text-slate-400 cursor-pointer select-none"
+                    title="Approve automatically once every kid who has this habit has completed it that day"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={h.autoApproveWhenAll !== false}
+                      onChange={e => setAutoApprove(h._id, e.target.checked)}
+                      className="w-3.5 h-3.5 accent-violet-600 cursor-pointer"
+                    />
+                    <Zap size={12} className={h.autoApproveWhenAll !== false ? 'text-amber-500' : 'text-slate-300'} />
+                    Auto-approve when all kids do it
+                  </label>
                 </div>
               ))}
             </div>

@@ -557,7 +557,7 @@ router.put('/admin/config', requireParentOf(r => r.body?.childId), async (req, r
 router.get('/admin/habits', requireParentOf(r => r.query.userId), async (req, res, next) => {
   try {
     const habits = await Habit.find({ archivedAt: null, userId: req.query.userId })
-      .select('userId name emoji points order').sort({ order: 1 }).lean();
+      .select('userId name emoji points order autoApproveWhenAll').sort({ order: 1 }).lean();
     res.json(habits);
   } catch (err) { next(err); }
 });
@@ -573,6 +573,23 @@ router.put('/admin/habits/:habitId/points', async (req, res, next) => {
     if (!target) return res.status(404).json({ error: 'Habit not found' });
     if (!(await assertParentOf(req, target.userId))) return res.status(403).json({ error: 'Not authorised for this child' });
     const habit = await Habit.findByIdAndUpdate(req.params.habitId, { points }, { new: true }).select('_id name points').lean();
+    res.json(habit);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/math/admin/habits/:habitId/auto-approve — body { autoApproveWhenAll }. Off switch
+// for shared-habit auto-approval (see utils/autoApprove). Same link-scoped ownership gate as
+// the points route. Only affects habits 2+ linked siblings share; solo habits ignore the flag.
+router.put('/admin/habits/:habitId/auto-approve', async (req, res, next) => {
+  try {
+    const { autoApproveWhenAll } = req.body || {};
+    if (!mongoose.isValidObjectId(req.params.habitId)) return res.status(400).json({ error: 'valid habitId required' });
+    if (typeof autoApproveWhenAll !== 'boolean') return res.status(400).json({ error: 'autoApproveWhenAll must be a boolean' });
+    const target = await Habit.findById(req.params.habitId).select('userId').lean();
+    if (!target) return res.status(404).json({ error: 'Habit not found' });
+    if (!(await assertParentOf(req, target.userId))) return res.status(403).json({ error: 'Not authorised for this child' });
+    const habit = await Habit.findByIdAndUpdate(req.params.habitId, { autoApproveWhenAll }, { new: true })
+      .select('_id name points autoApproveWhenAll').lean();
     res.json(habit);
   } catch (err) { next(err); }
 });

@@ -10,8 +10,11 @@ const habitPointAwardSchema = new mongoose.Schema({
   date:       { type: String, required: true }, // 'YYYY-MM-DD' (kid local)
   points:     { type: Number, required: true, min: 0 },
   status:     { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true },
-  reviewedBy: { type: String, default: null }, // admin email
+  reviewedBy: { type: String, default: null }, // admin email, or AUTO_REVIEWER for auto-approvals
   reviewedAt: { type: Date,   default: null },
+  // True when shared-habit auto-approval (not a human) approved this row. Only auto-approved
+  // rows are clawed back if the kid later un-does the habit — a parent's approval stays final.
+  autoApproved: { type: Boolean, default: false },
 }, { timestamps: true });
 
 // One award row per habit per day.
