@@ -265,7 +265,7 @@ export default function Zigzag({ embedded = false }) {
       <header className="pt-4 mb-4">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-3xl font-extrabold text-slate-800 flex items-center gap-2">
-            <Zap className="text-violet-500" /> Zigzag
+            <Zap className="text-violet-500" /> Zig Zag / L-R Addition
           </h1>
           <Link
             to="/math"
