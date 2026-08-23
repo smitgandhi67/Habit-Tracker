@@ -171,26 +171,26 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
       against stubbed models.
 - [x] Commit.
 
-### Phase 5 — Client: more than 3 sets  `[ ]`
+### Phase 5 — Client: more than 3 sets  `[x]`
 - [x] `GymEntryModal`: `MAX_SETS = 12`, add/remove up to the cap, per-set warm-up
       toggle, prefill honours the plan's set count.
-- [ ] Copy the previous set's weight into a newly added set (fewer taps).
-- [ ] Gym log card: warm-up sets rendered muted with a `W` marker.
-- [ ] `PlanEditor`: sets `max` 10 → 12.
-- [ ] Commit.
+- [x] Copy the previous set's weight into a newly added set (fewer taps).
+- [x] Gym log card: warm-up sets rendered muted with a `W` marker.
+- [x] `PlanEditor`: sets `max` 10 → 12.
+- [x] Commit.
 
 ### Phase 6 — Client: the recommendation UI  `[ ]`
-- [ ] `src/lib/progression.js` — presentation + live preview only
+- [x] `src/lib/progression.js` — presentation + live preview only
       (`summarizeDraftSets`, `describeRecommendation`, `statusTone`,
       `formatWeight`). The authoritative decision stays server-side.
-- [ ] `src/components/NextTargetCard.jsx` — status-driven card: headline, rep
+- [x] `src/components/NextTargetCard.jsx` — status-driven card: headline, rep
       target, "why", `Use <weight>` apply button, and an inline settings popover
       for step / rep range / sets.
-- [ ] Wire into `GymEntryModal` above the sets editor; keep the existing
+- [x] Wire into `GymEntryModal` above the sets editor; keep the existing
       last-session + PR panel intact.
-- [ ] Live unlock preview under the sets editor as the user types.
-- [ ] `src/lib/progression.smoke.mjs` for the pure client helpers.
-- [ ] Commit.
+- [x] Live unlock preview under the sets editor as the user types.
+- [x] `src/lib/progression.smoke.mjs` for the pure client helpers.
+- [x] Commit.
 
 ### Phase 7 — Recommendations across the Gym tabs  `[ ]`
 - [ ] `useGym`: `fetchRecommendations`, `fetchExerciseSettings`,

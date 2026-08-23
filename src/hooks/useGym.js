@@ -154,13 +154,61 @@ export function useGym() {
     }
   }, []);
 
-  const fetchExerciseHistory = useCallback(async (exerciseName) => {
-    if (!exerciseName.trim()) return null;
+  // Returns { last, pr, recent, target, step, stepSource, recommendation, setting }.
+  // `planId` lets the server resolve the rep window from the plan the user
+  // actually has selected, since "active plan" lives in localStorage.
+  const fetchExerciseHistory = useCallback(async (exerciseName, opts = {}) => {
+    if (!exerciseName?.trim()) return null;
     try {
-      return await apiFetch(`/api/gym/exercise/${encodeURIComponent(exerciseName.trim())}/history`);
+      const params = new URLSearchParams();
+      if (opts.planId)   params.set('planId', opts.planId);
+      if (opts.dayLabel) params.set('dayLabel', opts.dayLabel);
+      const qs = params.toString();
+      return await apiFetch(
+        `/api/gym/exercise/${encodeURIComponent(exerciseName.trim())}/history${qs ? `?${qs}` : ''}`,
+      );
     } catch {
       return null;
     }
+  }, []);
+
+  // Bulk next-weight targets. With no `names` the server covers every exercise
+  // in the given plan (optionally one day).
+  const fetchRecommendations = useCallback(async ({ planId, dayLabel, names } = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (planId)   params.set('planId', planId);
+      if (dayLabel) params.set('dayLabel', dayLabel);
+      if (names?.length) params.set('names', names.join(','));
+      const qs = params.toString();
+      return await apiFetch(`/api/gym/recommendations${qs ? `?${qs}` : ''}`);
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const fetchExerciseSettings = useCallback(async () => {
+    try {
+      return await apiFetch('/api/gym/exercise-settings');
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Errors propagate here (unlike the read helpers above) because the caller
+  // shows a toast — a silently swallowed failure would look like a save.
+  const saveExerciseSetting = useCallback(async (exerciseName, values) => {
+    return await apiFetch(
+      `/api/gym/exercise-settings/${encodeURIComponent(exerciseName.trim())}`,
+      { method: 'PUT', body: JSON.stringify(values) },
+    );
+  }, []);
+
+  const resetExerciseSetting = useCallback(async (exerciseName) => {
+    return await apiFetch(
+      `/api/gym/exercise-settings/${encodeURIComponent(exerciseName.trim())}`,
+      { method: 'DELETE' },
+    );
   }, []);
 
   const fetchExerciseNames = useCallback(async () => {
@@ -234,6 +282,9 @@ export function useGym() {
     entries, weekData, loading, weekLoading,
     loadEntries, loadWeek,
     fetchExerciseHistory, fetchExerciseNames,
+    // Progression
+    fetchRecommendations, fetchExerciseSettings,
+    saveExerciseSetting, resetExerciseSetting,
     fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate,
     addEntry, updateEntry, deleteEntry,
     fetchProgress,

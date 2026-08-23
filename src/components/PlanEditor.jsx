@@ -333,7 +333,7 @@ export default function PlanEditor({ isAdmin, onClose }) {
                                 </div>
                                 <div className="flex gap-1.5 items-center">
                                   <input
-                                    type="number" min="1" max="10"
+                                    type="number" min="1" max="12"
                                     className="w-12 border border-slate-200 rounded px-1.5 py-1 text-xs disabled:bg-slate-50"
                                     value={ex.sets}
                                     onChange={e => updateExercise(dayIdx, exIdx, { sets: e.target.value })}

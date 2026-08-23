@@ -1,9 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Minus, Trophy, ShieldCheck } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Plus, Minus, Trophy, ShieldCheck, Flame } from 'lucide-react';
 import { BODY_PARTS, FEEL_OPTIONS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
+import { previewUnlock } from '../lib/progression';
+import NextTargetCard from './NextTargetCard';
 
-const DEFAULT_SET = { reps: '', weight: '' };
+const DEFAULT_SET = { reps: '', weight: '', isWarmup: false };
+
+// Mirrors GymEntry.MAX_SETS_PER_ENTRY on the server. Warmups, working sets and
+// back-off sets all count against it.
+const MAX_SETS = 12;
 
 // Eight non-negotiable safety self-checks from the master plan.
 const SAFETY_ITEMS = [
@@ -21,7 +27,12 @@ function emptySafetyChecks() {
   return Object.fromEntries(SAFETY_ITEMS.map(i => [i.key, false]));
 }
 
-export default function GymEntryModal({ date, entry, prefill, fetchExerciseList, fetchExerciseHistory, onSave, onClose }) {
+export default function GymEntryModal({
+  date, entry, prefill,
+  fetchExerciseList, fetchExerciseHistory,
+  saveExerciseSetting, resetExerciseSetting,
+  onSave, onClose,
+}) {
   const isEdit = !!entry;
   const { user } = useAuth() || {};
   const weightUnit = user?.weightUnit || 'lb';
@@ -30,9 +41,14 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
   const initialExerciseName = entry?.exerciseName ?? prefill?.exerciseName ?? '';
   const initialFeel         = entry?.feel         ?? 'medium';
   const initialSets = entry?.sets?.length
-    ? entry.sets.map(s => ({ reps: String(s.reps ?? ''), weight: String(s.weight ?? '') }))
+    ? entry.sets.map(s => ({
+        reps: String(s.reps ?? ''),
+        weight: String(s.weight ?? ''),
+        isWarmup: !!s.isWarmup,
+      }))
     : prefill?.sets
-      ? Array.from({ length: Math.min(3, Math.max(1, Number(prefill.sets) || 1)) },
+      // Honour the plan's prescribed set count (it can now exceed 3).
+      ? Array.from({ length: Math.min(MAX_SETS, Math.max(1, Number(prefill.sets) || 1)) },
           () => ({ ...DEFAULT_SET }))
       : [{ ...DEFAULT_SET }];
 
@@ -93,16 +109,58 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
     loadHistory(name);
   }
 
+  // Saving a per-exercise override changes the target, which changes the
+  // recommendation — so reload the history to show the new advice immediately.
+  async function handleSaveSetting(values) {
+    await saveExerciseSetting(exerciseName, values);
+    await loadHistory(exerciseName);
+  }
+
+  async function handleResetSetting() {
+    await resetExerciseSetting(exerciseName);
+    await loadHistory(exerciseName);
+  }
+
   // Sets helpers
   function updateSet(i, field, val) {
     setSets(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
   }
   function addSet() {
-    if (sets.length < 3) setSets(prev => [...prev, { ...DEFAULT_SET }]);
+    setSets(prev => {
+      if (prev.length >= MAX_SETS) return prev;
+      // Carry the last set's weight forward — straight sets are the common case,
+      // so this saves a tap per set on a long session.
+      const last = prev[prev.length - 1];
+      return [...prev, { ...DEFAULT_SET, weight: last?.weight ?? '' }];
+    });
   }
   function removeSet(i) {
     if (sets.length > 1) setSets(prev => prev.filter((_, idx) => idx !== i));
   }
+  function toggleWarmup(i) {
+    setSets(prev => prev.map((s, idx) => idx === i ? { ...s, isWarmup: !s.isWarmup } : s));
+  }
+
+  // Fill every working (non-warmup) row with the recommended weight.
+  function applyWeightToWorkingSets(weight) {
+    setSets(prev => prev.map(s => s.isWarmup ? s : { ...s, weight: String(weight) }));
+  }
+
+  const warmupCount     = sets.filter(s => s.isWarmup).length;
+  const workingSetCount = sets.length - warmupCount;
+
+  // Working sets are numbered 1..n independently of warmup rows, so the numbers
+  // line up with the "3 sets of 10" the plan prescribes.
+  function workingIndexOf(i) {
+    return sets.slice(0, i + 1).filter(s => !s.isWarmup).length;
+  }
+
+  // Optimistic preview of whether the rows on screen unlock the next weight.
+  // The authoritative status still comes from the server on the next open.
+  const unlockPreview = useMemo(
+    () => previewUnlock({ sets, target: history?.target, step: history?.step, unit: weightUnit }),
+    [sets, history?.target, history?.step, weightUnit],
+  );
 
   const canSave = bodyPart && exerciseName && sets.every(s => s.reps !== '');
 
@@ -116,8 +174,9 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
         exerciseName,
         feel,
         sets: sets.map(s => ({
-          reps:   Number(s.reps)   || 0,
-          weight: Number(s.weight) || 0,
+          reps:     Number(s.reps)   || 0,
+          weight:   Number(s.weight) || 0,
+          isWarmup: !!s.isWarmup,
         })),
         planDayLabel: planDayLabel || '',
         safetyChecks,
@@ -234,6 +293,18 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
             </div>
           )}
 
+          {/* Next-weight recommendation */}
+          {exerciseName && (
+            <NextTargetCard
+              history={history}
+              weightUnit={weightUnit}
+              loading={histLoading}
+              onApplyWeight={applyWeightToWorkingSets}
+              onSaveSetting={handleSaveSetting}
+              onResetSetting={handleResetSetting}
+            />
+          )}
+
           {/* History panel */}
           {exerciseName && (
             <div className="bg-slate-50 rounded-xl p-3 space-y-2">
@@ -246,7 +317,15 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
                       <p className="text-xs font-semibold text-slate-500 mb-1">Last session ({history.last.date})</p>
                       <div className="flex flex-wrap gap-1.5">
                         {history.last.sets.map((s, i) => (
-                          <span key={i} className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-600">
+                          <span
+                            key={i}
+                            className={`text-xs border rounded-lg px-2 py-1 ${
+                              s.isWarmup
+                                ? 'bg-orange-50 border-orange-100 text-orange-500'
+                                : 'bg-white border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {s.isWarmup && <span className="font-semibold mr-1">W</span>}
                             {s.reps} reps{s.weight ? ` × ${s.weight}${weightUnit}` : ''}
                           </span>
                         ))}
@@ -272,18 +351,40 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
           {/* Sets */}
           {exerciseName && (
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Sets</p>
+              <div className="flex items-baseline justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sets</p>
+                <p className="text-[11px] text-slate-400 tabular-nums">
+                  {workingSetCount} working{warmupCount > 0 ? ` · ${warmupCount} warmup` : ''}
+                </p>
+              </div>
               <div className="space-y-2">
                 {sets.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 w-5 text-center font-medium">{i + 1}</span>
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span className={`text-xs w-4 text-center font-medium ${s.isWarmup ? 'text-orange-400' : 'text-slate-400'}`}>
+                      {s.isWarmup ? 'W' : workingIndexOf(i)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleWarmup(i)}
+                      title={s.isWarmup ? 'Warmup set — not counted toward progression' : 'Mark as warmup set'}
+                      aria-pressed={s.isWarmup}
+                      className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
+                        s.isWarmup
+                          ? 'bg-orange-50 border-orange-200 text-orange-500'
+                          : 'bg-white border-slate-200 text-slate-300 hover:text-orange-400 hover:border-orange-200'
+                      }`}
+                    >
+                      <Flame size={13} />
+                    </button>
                     <input
                       type="number"
                       min="0"
                       value={s.reps}
                       onChange={e => updateSet(i, 'reps', e.target.value)}
                       placeholder="Reps"
-                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      className={`flex-1 min-w-0 border rounded-xl px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-400 ${
+                        s.isWarmup ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-slate-200'
+                      }`}
                     />
                     <span className="text-xs text-slate-400">×</span>
                     <input
@@ -293,23 +394,40 @@ export default function GymEntryModal({ date, entry, prefill, fetchExerciseList,
                       value={s.weight}
                       onChange={e => updateSet(i, 'weight', e.target.value)}
                       placeholder={weightUnit}
-                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      className={`flex-1 min-w-0 border rounded-xl px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-400 ${
+                        s.isWarmup ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-slate-200'
+                      }`}
                     />
                     {sets.length > 1 && (
-                      <button onClick={() => removeSet(i)} className="p-1 rounded-full hover:bg-red-50 text-red-400 transition-colors">
+                      <button
+                        onClick={() => removeSet(i)}
+                        title="Remove set"
+                        className="p-1 rounded-full hover:bg-red-50 text-red-400 transition-colors shrink-0"
+                      >
                         <Minus size={14} />
                       </button>
                     )}
                   </div>
                 ))}
               </div>
-              {sets.length < 3 && (
+
+              {sets.length < MAX_SETS ? (
                 <button
                   onClick={addSet}
                   className="mt-2 flex items-center gap-1 text-xs text-violet-600 font-medium hover:text-violet-700 transition-colors"
                 >
                   <Plus size={13} /> Add set
                 </button>
+              ) : (
+                <p className="mt-2 text-[11px] text-slate-400">Maximum {MAX_SETS} sets per exercise.</p>
+              )}
+
+              {/* Live unlock preview — recomputed as the user types, so they can
+                  see the next weight coming before they save. */}
+              {unlockPreview && (
+                <div className={`mt-3 px-3 py-2 rounded-xl border text-xs font-medium ${unlockPreview.tone}`}>
+                  {unlockPreview.text}
+                </div>
               )}
             </div>
           )}
