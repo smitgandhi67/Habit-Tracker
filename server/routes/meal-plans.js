@@ -1,7 +1,6 @@
 const express  = require('express');
 const router   = express.Router();
 const MealPlan = require('../models/MealPlan');
-const MealLog  = require('../models/MealLog');
 const { isAdmin } = require('../utils/auth');
 
 const ALLOWED_FIELDS = ['name', 'description', 'days', 'cycleLength', 'startDate'];

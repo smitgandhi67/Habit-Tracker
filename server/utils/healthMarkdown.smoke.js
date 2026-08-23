@@ -50,6 +50,9 @@ const md = buildHealthMarkdown({
   ],
   sleepNights: agg,
 });
+// The control characters in this range are the point of the assertion: the
+// export must stay plain 7-bit ASCII, so the class is deliberate.
+// eslint-disable-next-line no-control-regex
 ok('ascii only', !/[^\x00-\x7F]/.test(md));
 ok('has title', md.includes('# Health Export'));
 ok('has range', md.includes('2025-06-06 -> 2026-06-06'));

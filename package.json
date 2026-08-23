@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "lint:src": "eslint src",
+    "lint:server": "eslint server",
+    "test": "npm --prefix server test",
     "preview": "vite preview"
   },
   "dependencies": {

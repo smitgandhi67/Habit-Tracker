@@ -13,7 +13,6 @@ const MathPointAdjustment = require('../models/MathPointAdjustment');
 const { ADMIN_EMAIL } = require('../utils/auth');
 
 const BASE = 'http://localhost:3003';
-const REASON_TAG = 'Habit award SMOKE-TEST';
 let ok = true;
 const check = (label, cond) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}`); if (!cond) ok = false; };
 

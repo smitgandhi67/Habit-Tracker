@@ -206,7 +206,7 @@ const PLAN = {
   name:        PLAN_NAME,
   description: '14-day rotation, ~2,000 kcal / ~98g protein daily. Maximum diversity across nuts, seeds, dals, soy, dairy, whole grains, roots, greens. No food repeats more than twice in 14 days. Whey + B12/D3/algal-omega-3 supplements assumed.',
   cycleLength: 14,
-  days:        DAYS.map((d, i) => ({
+  days:        DAYS.map((d) => ({
     ...d,
     meals: d.meals.map((m, j) => ({ ...m, order: j })),
   })),

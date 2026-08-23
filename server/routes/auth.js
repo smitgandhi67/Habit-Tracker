@@ -69,7 +69,7 @@ router.post('/verify', async (req, res) => {
       ...flags,
       createdAt: user.createdAt,
     });
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: 'Invalid Google token' });
   }
 });
@@ -101,7 +101,7 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 // IANA timezone format check — keep loose; rely on Intl runtime for full validation.
-const IANA_TZ = /^[A-Za-z_+\-]+(?:\/[A-Za-z0-9_+\-]+){0,3}$/;
+const IANA_TZ = /^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+){0,3}$/;
 function isValidIanaTz(tz) {
   if (typeof tz !== 'string' || !IANA_TZ.test(tz)) return false;
   try {

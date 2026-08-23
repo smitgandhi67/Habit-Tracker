@@ -76,7 +76,7 @@ eq('initialLevel trivial', initialLevelFor('mul', 1, 9), MAX_LEVEL - 1);
 eq('initialLevel normal',  initialLevelFor('mul', 6, 7), 0);
 
 // ---- question-type registry (squares + square roots) ----
-const { TYPES, OP_KEYS, get, isCorrect, validateOperands, pointsForOp: regPoints } = require('./questionTypes');
+const { OP_KEYS, get, isCorrect, validateOperands, pointsForOp: regPoints } = require('./questionTypes');
 
 eq('registry has 9 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac');
 eq('pointsForOp delegates to registry', regPoints('sqrt'), 4);

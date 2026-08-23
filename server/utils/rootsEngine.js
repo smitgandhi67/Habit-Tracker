@@ -28,7 +28,6 @@ const POINTS = {
 const NEW_ROOTS_PER_DAY = 2;   // at most N never-seen roots introduced per day
 const DAILY_ITEM_GOAL = 12;    // target interactions/day (drives the ring); soft cap below
 
-const isIso = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 // 'YYYY-MM-DD' that is INTERVAL_WEEKS[level] weeks after dateStr (UTC-safe).
 function dueDateAfter(dateStr, level) {
