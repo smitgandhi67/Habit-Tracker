@@ -64,6 +64,14 @@ GymEntry.findOne = (filter = {}) => {
 // Mimics the $match/$sort/$group/$slice pipeline in recentSessionsByExercise.
 GymEntry.aggregate = async (pipeline) => {
   const match = pipeline[0].$match;
+  // An aggregation $match bypasses schema casting, so a string userId (which is
+  // what the JWT gives us) would silently match nothing in real MongoDB. Assert
+  // the route casts it, otherwise this stub's loose string compare would hide
+  // an endpoint that returns empty for every user in production.
+  assert.ok(
+    match.userId instanceof mongoose.Types.ObjectId,
+    'aggregate $match.userId must be a cast ObjectId, not a string',
+  );
   const limit = pipeline[3].$project.sessions.$slice[1];
   const names = new Set(match.exerciseName.$in);
   const rows = entries
@@ -148,10 +156,15 @@ before(() => {
 
   const gymRouter = require('./gym');
   const requireAuth = require('../middleware/auth');
+  const errorHandler = require('../middleware/errorHandler');
   app = express();
   app.use(express.json());
   app.use(cookieParser());
   app.use('/api/gym', requireAuth, gymRouter);
+  // Mounted exactly as app.js does. Without it a URIError thrown inside the
+  // router would fall through to Express's HTML default page, which is not what
+  // the deployed API returns.
+  app.use(errorHandler);
 });
 
 function tokenFor(id) {
@@ -452,6 +465,34 @@ test('settings endpoints require authentication', async () => {
   assert.equal(get.status, 401);
   assert.equal(put.status, 401);
   assert.equal(del.status, 401);
+});
+
+// --- malformed input ---------------------------------------------------------
+
+test('a malformed percent-escape answers 400 JSON, never a 500 or an HTML page', async () => {
+  // "%zz" is not a valid escape. Express's router throws a URIError while
+  // matching, before the handler runs; the shared errorHandler must turn that
+  // into the same JSON shape every other error uses.
+  const cases = [
+    ['GET',    '/api/gym/exercise/%zz/history',   undefined],
+    ['GET',    '/api/gym/exercise-settings/%zz',  undefined],
+    ['PUT',    '/api/gym/exercise-settings/%zz',  { weightStep: 5 }],
+    ['DELETE', '/api/gym/exercise-settings/%zz',  undefined],
+  ];
+  for (const [method, path, body] of cases) {
+    const r = await call(method, path, { body });
+    assert.equal(r.status, 400, `${method} ${path}`);
+    assert.ok(r.body?.error, `${method} ${path} should return a JSON error body`);
+  }
+});
+
+test('history of a name with spaces and punctuation round-trips', async () => {
+  catalog.push({ _id: oid(), name: "Farmer's Walk", nameKey: "farmer's walk", bodyPart: 'full_body' });
+  logSession("Farmer's Walk", '2026-08-01', setsAt(60, 10), { bodyPart: 'full_body' });
+  const r = await call('GET', `/api/gym/exercise/${encodeURIComponent("Farmer's Walk")}/history`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.last.exerciseName, "Farmer's Walk");
+  assert.equal(r.body.recommendation.status, 'ready');
 });
 
 test('normalizeExerciseName is the shared join key across all three stores', () => {

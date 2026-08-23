@@ -23,7 +23,7 @@ export default function Coaching() {
         <ul className="space-y-2 text-sm text-slate-700">
           <li><strong>Last 2 reps</strong> of every working set should be hard — leave 1-2 reps in the tank.</li>
           <li><strong>Compounds first</strong> (heavier weight, 8-10 reps); isolation last (12-15 reps).</li>
-          <li><strong>3 sets</strong> per exercise (not 2).</li>
+          <li><strong>3 sets</strong> per exercise (not 2) — log more if you run warm-ups or back-off sets.</li>
           <li><strong>Increase weight</strong> when you can hit the top of the rep range with good form.</li>
           <li><strong>Rest:</strong> 90-120 s between heavy compounds, 60-90 s between isolations.</li>
           <li><strong>Warm up 8-10 min</strong> before every session — 5 min cardio + 5 min dynamic mobility + 1-2 light warmup sets on first compound.</li>
@@ -57,18 +57,40 @@ export default function Coaching() {
           <TrendingUp size={16} className="text-violet-500" />
           Progressive overload
         </h2>
-        <ul className="space-y-2 text-sm text-slate-700">
+        <p className="text-xs text-slate-500 mb-3">
+          The app runs this cycle for you. Open any exercise in the log and the
+          <strong> Next target</strong> card shows the weight and rep goal for that session.
+        </p>
+        <ol className="space-y-2.5 text-sm text-slate-700 list-decimal list-inside">
           <li>
-            <strong>Hit the top of the rep range</strong> (e.g., 10 reps on bench at 8-10) with 1-2 reps in tank
-            for all 3 sets → <strong>increase weight by smallest increment</strong> next session (2.5-5 lb).
+            <strong>Earn the increase.</strong> Hit the <em>top</em> of the rep range on every prescribed set —
+            10 reps × 3 sets on an 8-10 exercise, 15 × 3 on a 12-15 one — with 1-2 reps still in the tank.
           </li>
           <li>
-            <strong>Can't hit the bottom of the rep range</strong> with good form → weight is too heavy, drop back.
+            <strong>Take the smallest jump.</strong> 5 lb on compounds, 2.5 lb on isolation
+            (2.5 / 1.25 kg). Set your own step per exercise if your machine's stack moves differently.
           </li>
           <li>
-            <strong>Track every session</strong> — weight used, reps completed, how it felt.
+            <strong>Expect reps to collapse.</strong> At a new weight, <strong>4 reps is the floor</strong>, not a
+            failure. 55 lb × 6, 5, 5 after 50 lb × 10, 10, 10 is exactly right.
           </li>
-        </ul>
+          <li>
+            <strong>Climb back up.</strong> Stay at the new weight, adding reps session by session, until you are
+            back to 10 (or 15) on every set. Then repeat from step 1.
+          </li>
+          <li>
+            <strong>Under 4 reps means back off.</strong> The jump was too big — return to the weight that was
+            working rather than grinding at one you cannot build from.
+          </li>
+        </ol>
+        <div className="mt-4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+          <strong>Warm-up sets:</strong> log them with the flame toggle. They are kept in your history but
+          excluded from the maths, so a light ramp-up never blocks an increase you have earned.
+        </div>
+        <p className="text-sm text-slate-700 mt-3">
+          <strong>Track every session</strong> — weight used, reps completed, how it felt. The recommendation is
+          derived from your log every time, so skipping a suggestion or deloading on your own corrects itself.
+        </p>
       </section>
 
       {/* Progress tracking */}

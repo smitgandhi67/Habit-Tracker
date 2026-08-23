@@ -101,6 +101,10 @@ export default function Gym() {
   // Next-weight targets for the exercises logged on this date, so each card can
   // show what to lift next time. One request per date, not one per entry.
   const [recsByName, setRecsByName] = useState({});
+  // Bumped after any write. Editing a set's reps changes the recommendation but
+  // NOT the set of exercise names, so the name key alone would leave the chip
+  // showing advice derived from the pre-edit numbers.
+  const [recsVersion, setRecsVersion] = useState(0);
   // NUL-joined: it cannot occur in a trimmed exercise name, so the key is safe
   // to split back into the request list.
   const loggedNamesKey = [...new Set(entries.map(e => e.exerciseName))].join('\u0000');
@@ -118,7 +122,7 @@ export default function Gym() {
       setRecsByName(Object.fromEntries(list.map(r => [r.exerciseName, r])));
     });
     return () => { cancelled = true; };
-  }, [loggedNamesKey, activePlanId, fetchRecommendations]);
+  }, [loggedNamesKey, activePlanId, fetchRecommendations, recsVersion]);
 
   // The modal resolves its rep window from whichever plan is selected in the
   // Plan tab, so the target it shows matches the plan the user is following.
@@ -146,6 +150,7 @@ export default function Gym() {
         toast.success('Exercise logged!');
       }
       loadWeek(date);
+      setRecsVersion(v => v + 1);
     } catch (err) {
       toast.error(err.message || 'Failed to save entry');
       throw err;
@@ -157,6 +162,7 @@ export default function Gym() {
     try {
       await deleteEntry(id);
       loadWeek(date);
+      setRecsVersion(v => v + 1);
       toast.success('Entry deleted');
     } catch {
       toast.error('Failed to delete entry');

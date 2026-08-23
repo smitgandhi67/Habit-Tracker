@@ -1,4 +1,5 @@
 const express   = require('express');
+const mongoose  = require('mongoose');
 const router    = express.Router();
 const GymEntry  = require('../models/GymEntry');
 const Exercise  = require('../models/Exercise');
@@ -38,6 +39,26 @@ async function checkAndMarkPR(entry, userId) {
 }
 
 // ─── progression helpers ────────────────────────────────────────────────────
+
+// Safe ObjectId cast for aggregation pipelines, which bypass schema casting.
+// Returns null rather than throwing on anything that is not a valid id.
+function toObjectId(id) {
+  if (id instanceof mongoose.Types.ObjectId) return id;
+  if (typeof id === 'string' && mongoose.Types.ObjectId.isValid(id)) {
+    return new mongoose.Types.ObjectId(id);
+  }
+  return null;
+}
+
+// URL-decode a path segment without letting a malformed escape ("%", "%zz")
+// blow up as an unhandled 500. Returns null so the caller can answer 400.
+function safeDecode(value) {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return null;
+  }
+}
 
 // The JWT carries only identity (_id / email / name / photo), NOT preferences,
 // and the weight-unit toggle writes straight to the User document — so reading
@@ -103,8 +124,13 @@ function buildRecommendation({ exerciseName, bodyPart, sessions, setting, planEx
 // tab would fire a query per planned exercise.
 async function recentSessionsByExercise(userId, names, limit) {
   if (!names.length) return new Map();
+  // req.user._id is a STRING (the JWT serialises the ObjectId). find() casts it
+  // through the schema, but an aggregation $match does not — a string would
+  // silently match nothing at all. Cast explicitly.
+  const uid = toObjectId(userId);
+  if (!uid) return new Map();
   const rows = await GymEntry.aggregate([
-    { $match: { userId, exerciseName: { $in: names } } },
+    { $match: { userId: uid, exerciseName: { $in: names } } },
     { $sort: { date: -1, createdAt: -1 } },
     { $group: {
       _id: '$exerciseName',
@@ -158,7 +184,8 @@ router.get('/week', async (req, res) => {
 //   the resolved target, weight step and the next-weight recommendation.
 router.get('/exercise/:name/history', async (req, res) => {
   try {
-    const exerciseName = decodeURIComponent(req.params.name);
+    const exerciseName = safeDecode(req.params.name);
+    if (!exerciseName) return res.status(400).json({ error: 'invalid exercise name' });
     const recentCount = Math.min(
       MAX_RECENT_SESSIONS,
       Math.max(1, parseInt(req.query.recent, 10) || RECENT_SESSIONS),
@@ -395,7 +422,7 @@ router.get('/exercise-settings', async (req, res) => {
 // PUT /api/gym/exercise-settings/:name — upsert overrides for one exercise.
 router.put('/exercise-settings/:name', async (req, res) => {
   try {
-    const rawName = decodeURIComponent(req.params.name || '').trim();
+    const rawName = (safeDecode(req.params.name) || '').trim();
     if (!rawName) return res.status(400).json({ error: 'exercise name required' });
 
     const { values, error } = parseSettingBody(req.body);
@@ -433,7 +460,7 @@ router.put('/exercise-settings/:name', async (req, res) => {
 // DELETE /api/gym/exercise-settings/:name — back to plan / body-part defaults.
 router.delete('/exercise-settings/:name', async (req, res) => {
   try {
-    const nameKey = normalizeExerciseName(decodeURIComponent(req.params.name || ''));
+    const nameKey = normalizeExerciseName(safeDecode(req.params.name) || '');
     if (!nameKey) return res.status(400).json({ error: 'exercise name required' });
     await ExerciseSetting.findOneAndDelete({ userId: req.user._id, nameKey });
     // Idempotent: "no override" is the desired end state either way.

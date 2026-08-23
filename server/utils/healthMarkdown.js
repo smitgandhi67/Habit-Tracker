@@ -20,11 +20,14 @@ function cell(v) {
   return (v === null || v === undefined || Number.isNaN(v)) ? '-' : String(v);
 }
 
-// "repsxweightunit"; weight omitted when 0/falsy (bodyweight)
+// "repsxweightunit"; weight omitted when 0/falsy (bodyweight).
+// Warmup sets are suffixed "(w)" so a reader can tell them from working sets —
+// only working sets drive progression.
 function formatSet(set, weightUnit) {
   const reps = set?.reps ?? 0;
-  if (!set || !set.weight) return `${reps}`;
-  return `${reps}x${set.weight}${weightUnit}`;
+  const warm = set?.isWarmup ? ' (w)' : '';
+  if (!set || !set.weight) return `${reps}${warm}`;
+  return `${reps}x${set.weight}${weightUnit}${warm}`;
 }
 
 // round to 1 decimal, drop trailing ".0"
@@ -54,10 +57,18 @@ function buildSummary({ units, gymEntries, body, sleepNights }) {
   const lines = [];
 
   const trainDates = new Set(gymEntries.map(e => e.date));
-  const totalSets = gymEntries.reduce((n, e) => n + (e.sets?.length || 0), 0);
+  // Working sets are the meaningful count — warmups are reported separately so
+  // the headline number does not inflate when someone logs their ramp-up.
+  const countSets = (pred) =>
+    gymEntries.reduce((n, e) => n + (e.sets || []).filter(pred).length, 0);
+  const workingSets = countSets(s => !s.isWarmup);
+  const warmupSets  = countSets(s => s.isWarmup);
+  const setsLabel = warmupSets > 0
+    ? `${workingSets} (+${warmupSets} warmup)`
+    : String(workingSets);
   const exNames = new Set(gymEntries.map(e => e.exerciseName));
   const prs = gymEntries.filter(e => e.isPersonalRecord).length;
-  lines.push(`- Training days: ${trainDates.size} | sets logged: ${totalSets} | distinct exercises: ${exNames.size} | PRs: ${prs}`);
+  lines.push(`- Training days: ${trainDates.size} | sets logged: ${setsLabel} | distinct exercises: ${exNames.size} | PRs: ${prs}`);
 
   const weights = body
     .filter(b => b.weight !== null && b.weight !== undefined)

@@ -78,7 +78,10 @@ eq('initialLevel normal',  initialLevelFor('mul', 6, 7), 0);
 // ---- question-type registry (squares + square roots) ----
 const { OP_KEYS, get, isCorrect, validateOperands, pointsForOp: regPoints } = require('./questionTypes');
 
-eq('registry has 9 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac');
+// Stale assertion, corrected: the registry has grown to 13 types (pct, fdec,
+// mix and formula were added after this line was written) but the expectation
+// was never updated, so this script has been reporting a false failure.
+eq('registry has 13 types', OP_KEYS.join(','), 'mul,add,sub,div,sq,sqrt,cube,cbrt,frac,pct,fdec,mix,formula');
 eq('pointsForOp delegates to registry', regPoints('sqrt'), 4);
 
 // squares: n² with base 0..max

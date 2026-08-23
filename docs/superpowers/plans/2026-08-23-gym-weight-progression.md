@@ -1,6 +1,6 @@
 # Gym — Weight Progression Coach
 
-**Status:** in progress · started 2026-08-23
+**Status:** complete · started 2026-08-23
 **Branch:** master
 
 > Live task board. `[ ]` pending · `[~]` in progress · `[x]` done · `[!]` blocked.
@@ -200,13 +200,13 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
 - [x] Log tab: `Next: 55 lb` / `Ready` chip on each entry card.
 - [x] Commit.
 
-### Phase 8 — Docs, hardening, verification  `[ ]`
-- [ ] `Coaching.jsx`: document the real progression rules the app now enforces
+### Phase 8 — Docs, hardening, verification  `[x]`
+- [x] `Coaching.jsx`: document the real progression rules the app now enforces
       (4-rep floor, climb, deload, warm-up sets) so copy matches behaviour.
-- [ ] Health export: warm-up markers, `> 3` sets.
-- [ ] Full verification: `node --test`, all smoke scripts, `eslint` on new files,
+- [x] Health export: warm-up markers, `> 3` sets.
+- [x] Full verification: `node --test`, all smoke scripts, `eslint` on new files,
       `vite build`.
-- [ ] Commit + push.
+- [x] Commit + push.
 
 ---
 
@@ -221,6 +221,31 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
 | Old entries with 1-3 sets | Widening the cap is additive; every existing document stays valid. |
 | Bulk endpoint N+1 | Single `$sort` + `$group` + `$slice` aggregation over an indexed match. |
 | Server unbootable locally (no `.env`) | Route tests stub the models; no DB needed. |
+
+## 4b. Bugs caught during implementation
+
+Three defects in this feature's own code, found by review and by making the test
+harness faithful rather than convenient:
+
+1. **kg users would have got lb-sized increments.** The JWT carries identity
+   only, so `req.user.weightUnit` was always `undefined` and every kg user would
+   silently have been told to add 5 instead of 2.5. Now read from the `User`
+   document (as `routes/export.js` does), which also makes the unit toggle apply
+   immediately.
+2. **The bulk recommendations endpoint would have returned nothing for
+   everyone.** `req.user._id` is a string; `find()` casts it through the schema
+   but an aggregation `$match` does not, so it would have matched zero
+   documents in real MongoDB. Now cast explicitly — and the test stub asserts
+   the cast, because its own loose string compare had been hiding the bug.
+3. **`climb` only lasted one session.** Consolidating a new weight takes several
+   sessions and all of them are climbing, but comparing against the *previous*
+   session marked only the first. Now compares against the last session at a
+   *different* weight.
+
+Also corrected: `server/utils/math.smoke.js` asserted a 9-entry question-type
+registry that had since grown to 13, so that script had been reporting a false
+failure and would have masked a real regression. Assertion updated; no product
+code touched.
 
 ## 5. Out of scope (reported, not changed)
 

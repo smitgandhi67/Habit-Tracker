@@ -58,6 +58,32 @@ ok('has title', md.includes('# Health Export'));
 ok('has range', md.includes('2025-06-06 -> 2026-06-06'));
 ok('summary training days', md.includes('Training days: 2'));
 ok('summary PR count', md.includes('PRs: 1'));
+ok('summary counts working sets only', md.includes('sets logged: 3'));
+
+// --- warmup sets and more than three sets per exercise ---
+const warm = buildHealthMarkdown({
+  from: '2026-08-01', to: '2026-08-23', generatedAt: '2026-08-23T10:00:00Z',
+  units: { weight: 'lb', length: 'in' },
+  gymEntries: [
+    { date: '2026-08-20', bodyPart: 'chest', exerciseName: 'Bench Press', feel: 'medium',
+      sets: [
+        { reps: 12, weight: 45, isWarmup: true },
+        { reps: 8,  weight: 95, isWarmup: true },
+        { reps: 10, weight: 135 },
+        { reps: 10, weight: 135 },
+        { reps: 10, weight: 135 },
+        { reps: 12, weight: 115 },
+      ],
+      isPersonalRecord: false, planDayLabel: '' },
+  ],
+  body: [], sleepNights: [],
+});
+ok('warmup sets are marked', warm.includes('12x45lb (w)'));
+ok('working sets are not marked', warm.includes('10x135lb,'));
+ok('warmups excluded from the headline count', warm.includes('sets logged: 4 (+2 warmup)'));
+ok('six sets survive the export', (warm.match(/x1(35|15)lb/g) || []).length === 4);
+// eslint-disable-next-line no-control-regex
+ok('warmup export stays ascii', !/[^\x00-\x7F]/.test(warm));
 ok('summary weight delta', md.includes('182 lb (2025-06-10) -> 174 lb (2026-06-04)') && md.includes('change -8 lb'));
 ok('log day label', md.includes('### 2026-06-05 | Day 3'));
 ok('log no-label heading', md.includes('### 2026-06-03\n'));
