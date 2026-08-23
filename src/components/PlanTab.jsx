@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Play, Pencil, Plus, CheckCircle2, Circle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Pencil, Plus, CheckCircle2, Circle, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react';
 import { useGym, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
 import { normalizeExerciseName } from '../lib/exerciseName';
+import { describeRecommendation, statusTone, STATUS } from '../lib/progression';
 import PlanEditor from './PlanEditor';
 
 function bodyPartEmoji(key) {
@@ -38,14 +39,16 @@ function uniquePlannedExercises(plan) {
 export default function PlanTab({ weekData, onOpenEntry }) {
   const { user } = useAuth();
   const isAdmin  = !!user?.isAdmin;
+  const weightUnit = user?.weightUnit || 'lb';
   const {
     plans, plansLoaded, activePlan, activePlanId, setActivePlanId,
-    fetchExerciseList,
+    fetchExerciseList, fetchRecommendations,
   } = useGym();
 
   const [selectedDayLabel, setSelectedDayLabel] = useState('');
   const [exerciseLibrary, setExerciseLibrary] = useState([]);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [recsByName, setRecsByName] = useState({});
 
   // Reset day selection when active plan changes (keep if still valid).
   useEffect(() => {
@@ -60,6 +63,22 @@ export default function PlanTab({ weekData, onOpenEntry }) {
   useEffect(() => {
     fetchExerciseList().then(setExerciseLibrary);
   }, [fetchExerciseList]);
+
+  // Next-weight targets for every exercise in the active plan, in one request.
+  // Keyed by normalized name because plan names can drift from catalog casing.
+  useEffect(() => {
+    let cancelled = false;
+    const request = activePlanId
+      ? fetchRecommendations({ planId: activePlanId })
+      : Promise.resolve([]);
+    request.then(list => {
+      if (cancelled) return;
+      setRecsByName(Object.fromEntries(
+        list.map(r => [normalizeExerciseName(r.exerciseName), r]),
+      ));
+    });
+    return () => { cancelled = true; };
+  }, [activePlanId, fetchRecommendations]);
 
   // Keyed by normalized name: plan names can drift from catalog casing/whitespace.
   const videoUrlByName = useMemo(() => {
@@ -190,6 +209,10 @@ export default function PlanTab({ weekData, onOpenEntry }) {
                       <p className="text-xs text-slate-500 mt-0.5">
                         {ex.sets} × {reps || 'reps'} {ex.notes ? `· ${ex.notes}` : ''}
                       </p>
+                      <TargetChip
+                        rec={recsByName[normalizeExerciseName(ex.exerciseName)]}
+                        weightUnit={weightUnit}
+                      />
                     </button>
                     {videoUrl && (
                       <a
@@ -221,6 +244,31 @@ export default function PlanTab({ weekData, onOpenEntry }) {
 
       {editorOpen && <PlanEditor isAdmin={isAdmin} onClose={() => setEditorOpen(false)} />}
     </div>
+  );
+}
+
+// "What to lift today" for one planned exercise. Renders nothing until the bulk
+// recommendations land, and stays quiet for an exercise with no history yet —
+// the plan already shows the prescription in that case.
+function TargetChip({ rec, weightUnit }) {
+  if (!rec?.recommendation) return null;
+  const described = describeRecommendation(rec.recommendation, rec.target, weightUnit);
+  if (!described || described.status === STATUS.NO_HISTORY) return null;
+  if (described.status === STATUS.BODYWEIGHT) return null;
+
+  const tone = statusTone(described.status);
+  const Icon = described.status === STATUS.READY ? TrendingUp
+    : described.status === STATUS.DELOAD ? TrendingDown
+    : null;
+  const reps = described.status === STATUS.READY
+    ? `${rec.recommendation.repsFloor}+`
+    : `${rec.target.repsMax}`;
+
+  return (
+    <span className={`inline-flex items-center gap-1 mt-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-md border ${tone.chip}`}>
+      {Icon && <Icon size={10} />}
+      {described.short} × {reps}
+    </span>
   );
 }
 

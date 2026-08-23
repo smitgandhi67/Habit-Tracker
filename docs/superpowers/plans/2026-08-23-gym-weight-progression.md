@@ -192,13 +192,13 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
 - [x] `src/lib/progression.smoke.mjs` for the pure client helpers.
 - [x] Commit.
 
-### Phase 7 — Recommendations across the Gym tabs  `[ ]`
-- [ ] `useGym`: `fetchRecommendations`, `fetchExerciseSettings`,
+### Phase 7 — Recommendations across the Gym tabs  `[x]`
+- [x] `useGym`: `fetchRecommendations`, `fetchExerciseSettings`,
       `saveExerciseSetting`, `resetExerciseSetting`; pass `activePlanId` through.
-- [ ] Plan tab: per-exercise target chip (`55 lb x 4+`) beside each planned
+- [x] Plan tab: per-exercise target chip (`55 lb x 4+`) beside each planned
       exercise, driven by the bulk endpoint.
-- [ ] Log tab: `Next: 55 lb` / `Ready` chip on each entry card.
-- [ ] Commit.
+- [x] Log tab: `Next: 55 lb` / `Ready` chip on each entry card.
+- [x] Commit.
 
 ### Phase 8 — Docs, hardening, verification  `[ ]`
 - [ ] `Coaching.jsx`: document the real progression rules the app now enforces
