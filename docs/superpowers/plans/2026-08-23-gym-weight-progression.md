@@ -157,22 +157,22 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
 - [x] Run `node --test`; all green.
 - [x] Commit.
 
-### Phase 4 — Server API  `[ ]`
-- [ ] `GET /api/gym/exercise/:name/history?planId=&recent=` — now also returns
+### Phase 4 — Server API  `[x]`
+- [x] `GET /api/gym/exercise/:name/history?planId=&recent=` — now also returns
       `recent[]`, `target`, `step`, `recommendation`, `setting`.
       Back-compatible: `last` and `pr` keep their existing shape.
-- [ ] `GET /api/gym/recommendations?planId=&dayLabel=&names=` — bulk; one
+- [x] `GET /api/gym/recommendations?planId=&dayLabel=&names=` — bulk; one
       aggregation for the last 3 sessions of each requested exercise.
-- [ ] `GET /api/gym/exercise-settings` — list overrides.
-- [ ] `PUT /api/gym/exercise-settings/:name` — upsert; `null` clears a field;
+- [x] `GET /api/gym/exercise-settings` — list overrides.
+- [x] `PUT /api/gym/exercise-settings/:name` — upsert; `null` clears a field;
       full range validation (step > 0, repsMin <= repsMax, sets 1..12).
-- [ ] `DELETE /api/gym/exercise-settings/:name` — reset to inferred defaults.
-- [ ] `server/routes/gym.progression.routes.test.js` — HTTP + authz + validation
+- [x] `DELETE /api/gym/exercise-settings/:name` — reset to inferred defaults.
+- [x] `server/routes/gym.progression.routes.test.js` — HTTP + authz + validation
       against stubbed models.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase 5 — Client: more than 3 sets  `[ ]`
-- [ ] `GymEntryModal`: `MAX_SETS = 12`, add/remove up to the cap, per-set warm-up
+- [x] `GymEntryModal`: `MAX_SETS = 12`, add/remove up to the cap, per-set warm-up
       toggle, prefill honours the plan's set count.
 - [ ] Copy the previous set's weight into a newly added set (fewer taps).
 - [ ] Gym log card: warm-up sets rendered muted with a `W` marker.

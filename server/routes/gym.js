@@ -2,9 +2,13 @@ const express   = require('express');
 const router    = express.Router();
 const GymEntry  = require('../models/GymEntry');
 const Exercise  = require('../models/Exercise');
+const ExerciseSetting = require('../models/ExerciseSetting');
+const WorkoutPlan = require('../models/WorkoutPlan');
+const User      = require('../models/User');
 const { requireAdmin, isAdmin } = require('../utils/auth');
 const { normalizeExerciseName } = require('../utils/exerciseName');
 const { canonicalizeExercise } = require('../utils/canonicalExercise');
+const { resolveTarget, resolveStep, recommendNext, MAX_SETS } = require('../utils/progression');
 
 const BODY_PART_LABEL = {
   chest: 'Chest', back: 'Back', shoulders: 'Shoulders', arms: 'Arms',
@@ -31,6 +35,85 @@ async function checkAndMarkPR(entry, userId) {
   entry.prWeight        = entryMax;
   entry.isPersonalRecord = entryMax > 0 && entryMax >= historicalBest;
   return entry;
+}
+
+// ─── progression helpers ────────────────────────────────────────────────────
+
+// The JWT carries only identity (_id / email / name / photo), NOT preferences,
+// and the weight-unit toggle writes straight to the User document — so reading
+// req.user.weightUnit would always be undefined and every kg user would silently
+// get lb-sized increments (5 instead of 2.5). Read it from the User document,
+// the same way routes/export.js does.
+async function weightUnitOf(userId) {
+  const user = await User.findById(userId).select('weightUnit').lean();
+  return user?.weightUnit || 'lb';
+}
+
+// How many past sessions the engine looks at. It only needs the most recent
+// plus the most recent one at a different weight, but a few extra let the client
+// show a short trend without another round trip.
+const RECENT_SESSIONS = 5;
+const MAX_RECENT_SESSIONS = 20;
+
+// Load the plans this user may see, cheapest-relevant first: the plan they have
+// active in the UI, then the master plan, then their own. `planId` comes from
+// the client because "active plan" is a client-side preference (localStorage).
+async function visiblePlans(userId, planId) {
+  const filter = {
+    archivedAt: null,
+    $or: [{ isMaster: true }, { ownerUserId: userId }],
+  };
+  const plans = await WorkoutPlan.find(filter).select('_id isMaster days').lean();
+  // Stable priority: active plan, then master, then the rest.
+  return plans.sort((a, b) => {
+    const rank = p => (planId && String(p._id) === String(planId) ? 0 : p.isMaster ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+}
+
+// First matching plan exercise across the prioritised plans, by normalized name.
+function findPlanExercise(plans, exerciseName, dayLabel) {
+  const key = normalizeExerciseName(exerciseName);
+  for (const plan of plans) {
+    for (const day of plan.days || []) {
+      if (dayLabel && day.label !== dayLabel) continue;
+      for (const ex of day.exercises || []) {
+        if (normalizeExerciseName(ex.exerciseName) === key) return ex;
+      }
+    }
+  }
+  return null;
+}
+
+// Build the full recommendation payload for one exercise.
+function buildRecommendation({ exerciseName, bodyPart, sessions, setting, planExercise, weightUnit }) {
+  const target = resolveTarget({ bodyPart, setting, planExercise });
+  const { step, source: stepSource } = resolveStep({ weightUnit, bodyPart, setting });
+  return {
+    exerciseName,
+    bodyPart,
+    target,
+    step,
+    stepSource,
+    recommendation: recommendNext({ sessions, target, step }),
+  };
+}
+
+// Last N sessions for many exercises in ONE round trip. Without this the plan
+// tab would fire a query per planned exercise.
+async function recentSessionsByExercise(userId, names, limit) {
+  if (!names.length) return new Map();
+  const rows = await GymEntry.aggregate([
+    { $match: { userId, exerciseName: { $in: names } } },
+    { $sort: { date: -1, createdAt: -1 } },
+    { $group: {
+      _id: '$exerciseName',
+      bodyPart: { $first: '$bodyPart' },
+      sessions: { $push: { date: '$date', sets: '$sets' } },
+    } },
+    { $project: { bodyPart: 1, sessions: { $slice: ['$sessions', limit] } } },
+  ]);
+  return new Map(rows.map(r => [r._id, r]));
 }
 
 // ─── routes ─────────────────────────────────────────────────────────────────
@@ -70,22 +153,124 @@ router.get('/week', async (req, res) => {
   }
 });
 
-// GET /api/gym/exercise/:name/history  — last session + all-time PR
+// GET /api/gym/exercise/:name/history?planId=&dayLabel=&recent=
+//   Last session + all-time PR (unchanged shape, still the primary use), plus
+//   the resolved target, weight step and the next-weight recommendation.
 router.get('/exercise/:name/history', async (req, res) => {
   try {
     const exerciseName = decodeURIComponent(req.params.name);
+    const recentCount = Math.min(
+      MAX_RECENT_SESSIONS,
+      Math.max(1, parseInt(req.query.recent, 10) || RECENT_SESSIONS),
+    );
 
-    // Last session entry
-    const last = await GymEntry.findOne(
-      { userId: req.user._id, exerciseName },
-    ).sort({ date: -1, createdAt: -1 });
+    // Recent sessions, newest first. Doubles as the "last session" panel and as
+    // the engine's input, so one query serves both.
+    const recent = await GymEntry.find({ userId: req.user._id, exerciseName })
+      .sort({ date: -1, createdAt: -1 })
+      .limit(recentCount)
+      .lean();
 
     // All-time PR entry
     const pr = await GymEntry.findOne(
       { userId: req.user._id, exerciseName, isPersonalRecord: true },
-    ).sort({ prWeight: -1 });
+    ).sort({ prWeight: -1 }).lean();
 
-    res.json({ last: last || null, pr: pr || null });
+    const last = recent[0] || null;
+
+    // bodyPart drives the default rep window and step when nothing else does.
+    // Prefer the catalog over the last log so a recategorised exercise is right.
+    const nameKey  = normalizeExerciseName(exerciseName);
+    const catalog  = await Exercise.findOne({ nameKey }).select('bodyPart').lean();
+    const bodyPart = catalog?.bodyPart || last?.bodyPart || null;
+
+    const setting = await ExerciseSetting.findOne({ userId: req.user._id, nameKey }).lean();
+    const plans   = await visiblePlans(req.user._id, req.query.planId);
+    const planExercise = findPlanExercise(plans, exerciseName, req.query.dayLabel);
+
+    const built = buildRecommendation({
+      exerciseName,
+      bodyPart,
+      sessions: recent,
+      setting,
+      planExercise,
+      weightUnit: await weightUnitOf(req.user._id),
+    });
+
+    res.json({
+      last,
+      pr: pr || null,
+      recent,
+      bodyPart,
+      target: built.target,
+      step: built.step,
+      stepSource: built.stepSource,
+      recommendation: built.recommendation,
+      setting: setting || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/gym/recommendations?planId=&dayLabel=&names=a,b,c
+//   Bulk next-weight targets. Without `names` it covers every exercise in the
+//   selected plan (optionally one day). Used by the Plan and Log tabs.
+router.get('/recommendations', async (req, res) => {
+  try {
+    const { planId, dayLabel } = req.query;
+    const plans = await visiblePlans(req.user._id, planId);
+
+    // Explicit list wins; otherwise take the plan's exercises. Cap the list so a
+    // hand-crafted query can't fan out without bound.
+    let wanted = [];
+    if (typeof req.query.names === 'string' && req.query.names.trim()) {
+      wanted = req.query.names.split(',').map(n => n.trim()).filter(Boolean);
+    } else {
+      // Restrict to the ACTIVE plan when one was named, so the Plan tab reflects
+      // the plan on screen rather than every plan the user can see.
+      const scope = planId ? plans.filter(p => String(p._id) === String(planId)) : plans;
+      const seen = new Set();
+      for (const plan of scope) {
+        for (const day of plan.days || []) {
+          if (dayLabel && day.label !== dayLabel) continue;
+          for (const ex of day.exercises || []) {
+            const key = normalizeExerciseName(ex.exerciseName);
+            if (!ex.exerciseName || seen.has(key)) continue;
+            seen.add(key);
+            wanted.push(ex.exerciseName);
+          }
+        }
+      }
+    }
+    wanted = wanted.slice(0, 100);
+    if (wanted.length === 0) return res.json([]);
+
+    const keys = wanted.map(normalizeExerciseName);
+    const [byExercise, settings, catalog, weightUnit] = await Promise.all([
+      recentSessionsByExercise(req.user._id, wanted, RECENT_SESSIONS),
+      ExerciseSetting.find({ userId: req.user._id, nameKey: { $in: keys } }).lean(),
+      Exercise.find({ nameKey: { $in: keys } }).select('nameKey bodyPart').lean(),
+      weightUnitOf(req.user._id),
+    ]);
+
+    const settingByKey  = new Map(settings.map(s => [s.nameKey, s]));
+    const bodyPartByKey = new Map(catalog.map(c => [c.nameKey, c.bodyPart]));
+
+    const out = wanted.map(name => {
+      const key    = normalizeExerciseName(name);
+      const logged = byExercise.get(name);
+      return buildRecommendation({
+        exerciseName: name,
+        bodyPart:     bodyPartByKey.get(key) || logged?.bodyPart || null,
+        sessions:     logged?.sessions || [],
+        setting:      settingByKey.get(key) || null,
+        planExercise: findPlanExercise(plans, name, dayLabel),
+        weightUnit,
+      });
+    });
+
+    res.json(out);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -162,6 +347,97 @@ router.delete('/entries/:id', async (req, res) => {
     const entry = await GymEntry.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
     if (!entry) return res.status(404).json({ error: 'Entry not found' });
     res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── per-exercise progression settings ───────────────────────────────────────
+
+// Every field is optional and nullable: null means "fall back to the plan, then
+// to the body-part default". Absent means "leave whatever is already stored".
+const SETTING_FIELDS = {
+  weightStep: { min: 0.25, max: 100, integer: false },
+  repsMin:    { min: 1,    max: 100, integer: true  },
+  repsMax:    { min: 1,    max: 100, integer: true  },
+  targetSets: { min: 1,    max: MAX_SETS, integer: true },
+};
+
+// Returns { values, error }. `values` only holds the fields actually supplied.
+function parseSettingBody(body) {
+  const values = {};
+  for (const [field, spec] of Object.entries(SETTING_FIELDS)) {
+    if (!(field in (body || {}))) continue;
+    const raw = body[field];
+    if (raw === null || raw === '') { values[field] = null; continue; }
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return { error: `${field} must be a number or null` };
+    if (spec.integer && !Number.isInteger(n)) return { error: `${field} must be a whole number` };
+    if (n < spec.min || n > spec.max) {
+      return { error: `${field} must be between ${spec.min} and ${spec.max}` };
+    }
+    values[field] = n;
+  }
+  return { values };
+}
+
+// GET /api/gym/exercise-settings — every override this user has made.
+router.get('/exercise-settings', async (req, res) => {
+  try {
+    const list = await ExerciseSetting.find({ userId: req.user._id })
+      .sort({ exerciseName: 1 }).lean();
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/gym/exercise-settings/:name — upsert overrides for one exercise.
+router.put('/exercise-settings/:name', async (req, res) => {
+  try {
+    const rawName = decodeURIComponent(req.params.name || '').trim();
+    if (!rawName) return res.status(400).json({ error: 'exercise name required' });
+
+    const { values, error } = parseSettingBody(req.body);
+    if (error) return res.status(400).json({ error });
+    if (Object.keys(values).length === 0) {
+      return res.status(400).json({ error: 'no settings supplied' });
+    }
+
+    const nameKey = normalizeExerciseName(rawName);
+    // Snap to the catalog so the stored display name matches everywhere else.
+    const catalog = await Exercise.findOne({ nameKey }).select('name').lean();
+    const exerciseName = catalog?.name || rawName;
+
+    // findOneAndUpdate skips document middleware, so nameKey is set explicitly
+    // here rather than relying on the model's pre('validate') hook.
+    let doc = await ExerciseSetting.findOne({ userId: req.user._id, nameKey });
+    if (!doc) doc = new ExerciseSetting({ userId: req.user._id, nameKey, exerciseName });
+    doc.exerciseName = exerciseName;
+    Object.assign(doc, values);
+
+    // Cross-field check against the MERGED document, not just the patch: sending
+    // only repsMin must still be rejected if it lands above the stored repsMax.
+    if (doc.repsMin != null && doc.repsMax != null && doc.repsMin > doc.repsMax) {
+      return res.status(400).json({ error: 'repsMin must be less than or equal to repsMax' });
+    }
+
+    await doc.save();
+    res.json(doc);
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ error: 'Setting already exists' });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/gym/exercise-settings/:name — back to plan / body-part defaults.
+router.delete('/exercise-settings/:name', async (req, res) => {
+  try {
+    const nameKey = normalizeExerciseName(decodeURIComponent(req.params.name || ''));
+    if (!nameKey) return res.status(400).json({ error: 'exercise name required' });
+    await ExerciseSetting.findOneAndDelete({ userId: req.user._id, nameKey });
+    // Idempotent: "no override" is the desired end state either way.
+    res.json({ message: 'Reset to defaults' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
