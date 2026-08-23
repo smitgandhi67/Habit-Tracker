@@ -73,8 +73,14 @@ top weight, `targetSets` = target.sets, `MIN_REPS_NEW_WEIGHT = 4`.
 | top weight = 0 (bodyweight/timed) | `bodyweight` | 0 | `repsMax` |
 | `maxTopReps < 4` | `deload` | previous top weight, else `topWeight - step` | `repsMax` |
 | `q >= targetSets` | `ready` | `topWeight + step` | `4+` climbing to `repsMax` |
-| else, top weight rose vs. session before | `climb` | `topWeight` (hold) | `repsMax` (unlock `topWeight + step`) |
+| else, last session at a *different* weight was *lighter* | `climb` | `topWeight` (hold) | `repsMax` (unlock `topWeight + step`) |
 | else | `hold` | `topWeight` | `repsMax` (unlock `topWeight + step`) |
+
+`climb` deliberately looks back to the last session at a **different** weight,
+not merely the previous session. Consolidating a new weight takes several
+sessions, and all of them are "climbing"; only the first would qualify under a
+previous-session comparison. Rebuilding at a weight you had already handled
+(after a deload) is a `hold`, not a `climb`.
 
 Nothing is persisted: the recommendation is **derived** from history every time,
 so ignoring a suggestion, deloading, or editing an old entry all self-correct.
@@ -135,8 +141,8 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
 - [x] Confirm additive-only: existing documents stay valid, no migration needed.
 - [x] Commit.
 
-### Phase 3 — Progression engine (pure, server)  `[ ]`
-- [ ] `server/utils/progression.js`:
+### Phase 3 — Progression engine (pure, server)  `[x]`
+- [x] `server/utils/progression.js`:
       - `MIN_REPS_NEW_WEIGHT`, `DEFAULT_TARGET_SETS`, `MAX_SETS`
       - `workingSets`, `topWeightOf`, `topSetsOf`, `summarizeSession`
       - `defaultWeightStep({ weightUnit, bodyPart })`
@@ -145,11 +151,11 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
       - `resolveStep({ weightUnit, bodyPart, setting })`
       - `recommendNext({ sessions, target, step })` → structured, prose-free
       - `roundWeight`
-- [ ] `server/utils/progression.test.js` — node:test, covering the whole decision
+- [x] `server/utils/progression.test.js` — node:test, covering the whole decision
       table, the six-session worked example, warm-up exclusion, bodyweight,
       float safety, deload floor, and target/step resolution precedence.
-- [ ] Run `node --test`; all green.
-- [ ] Commit.
+- [x] Run `node --test`; all green.
+- [x] Commit.
 
 ### Phase 4 — Server API  `[ ]`
 - [ ] `GET /api/gym/exercise/:name/history?planId=&recent=` — now also returns
