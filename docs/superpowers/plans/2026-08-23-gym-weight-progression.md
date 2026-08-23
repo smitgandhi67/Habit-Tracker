@@ -122,18 +122,18 @@ Session 6   60 x  3, 60 x  3, 60 x  2   -> deload "Too heavy - back to 55 lb"
       pre-existing errors.
 - [x] Commit.
 
-### Phase 2 — Data model  `[ ]`
-- [ ] `GymEntry.setSchema`: add `isWarmup: Boolean` (default false).
-- [ ] `GymEntry.sets` validation: `1..3` → `1..12`, with a named validator +
+### Phase 2 — Data model  `[x]`
+- [x] `GymEntry.setSchema`: add `isWarmup: Boolean` (default false).
+- [x] `GymEntry.sets` validation: `1..3` → `1..12`, with a named validator +
       message so the 400 is legible.
-- [ ] `GymEntry`: index `{ userId, exerciseName, date: -1 }` for the
+- [x] `GymEntry`: index `{ userId, exerciseName, date: -1 }` for the
       "last N sessions per exercise" read path.
-- [ ] `WorkoutPlan.planExerciseSchema.sets`: max `10` → `12` (parity with logs).
-- [ ] New model `ExerciseSetting` — per-user, per-exercise overrides:
+- [x] `WorkoutPlan.planExerciseSchema.sets`: max `10` → `12` (parity with logs).
+- [x] New model `ExerciseSetting` — per-user, per-exercise overrides:
       `{ userId, nameKey, exerciseName, weightStep, repsMin, repsMax, targetSets }`,
       unique compound index `{ userId, nameKey }`.
-- [ ] Confirm additive-only: existing documents stay valid, no migration needed.
-- [ ] Commit.
+- [x] Confirm additive-only: existing documents stay valid, no migration needed.
+- [x] Commit.
 
 ### Phase 3 — Progression engine (pure, server)  `[ ]`
 - [ ] `server/utils/progression.js`:

@@ -7,7 +7,9 @@ const planExerciseSchema = new mongoose.Schema({
     type: String,
     enum: ['chest', 'back', 'shoulders', 'arms', 'legs', 'core', 'cardio', 'full_body'],
   },
-  sets:    { type: Number, default: 3, min: 1, max: 10 },
+  // Upper bound matches GymEntry.MAX_SETS_PER_ENTRY so a plan can never
+  // prescribe more sets than a session is allowed to log.
+  sets:    { type: Number, default: 3, min: 1, max: 12 },
   repsMin: { type: Number, min: 1 },
   repsMax: { type: Number, min: 1 },
   notes:   { type: String, trim: true },
