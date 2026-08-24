@@ -1,13 +1,27 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { format, startOfWeek } from 'date-fns';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { cacheKey, readCache, writeCache, clearCache, isFresh } from '../lib/gymCache';
 import {
   listPlans, createPlan, updatePlan, archivePlan, unarchivePlan,
 } from '../lib/plans';
 
 const ACTIVE_PLAN_LS_KEY = (userId) => `gym:activePlanId:${userId}`;
+
+// One store per gym page, shared through this context. Calling useGym() in each
+// component gave every tab its own copy of the plans (four /api/plans requests
+// per visit) and its own activePlanId, so switching plans in the Plan tab left
+// the Log tab's recommendations resolved against the previous plan.
+export const GymContext = createContext(null);
+// Co-located hook for the provider above; intentionally exported alongside it.
+export const useGymStore = () => useContext(GymContext);
+
+// Cache names (namespaced per user by cacheKey).
+const CK_PLANS   = 'plans';
+const CK_LIBRARY = 'exercise-library';
+const CK_RECS    = 'plan-recs';
 
 export const BODY_PARTS = [
   { key: 'chest',     label: 'Chest',      emoji: '💪' },
@@ -43,31 +57,57 @@ export function useGym() {
     return window.localStorage.getItem(ACTIVE_PLAN_LS_KEY(userId));
   });
 
-  // Load plans once authenticated; auto-select master plan if none chosen.
+  // Adopt a plans list (cached or fresh) and reconcile the selection, which
+  // lives in localStorage and so can point at a plan archived on another device.
+  const applyPlans = useCallback((data) => {
+    setPlans(data);
+    setPlansLoaded(true);
+    const stored = window.localStorage.getItem(ACTIVE_PLAN_LS_KEY(userId));
+    const stillExists = stored && data.some(p => p._id === stored);
+    if (!stillExists) {
+      const master = data.find(p => p.isMaster);
+      const fallback = master?._id || data[0]?._id || null;
+      setActivePlanIdState(fallback);
+      if (fallback) window.localStorage.setItem(ACTIVE_PLAN_LS_KEY(userId), fallback);
+      else window.localStorage.removeItem(ACTIVE_PLAN_LS_KEY(userId));
+    } else {
+      setActivePlanIdState(stored);
+    }
+  }, [userId]);
+
+  // Load plans once authenticated: paint the cached copy, then revalidate only
+  // if it has gone stale. queueMicrotask keeps the cached paint out of the
+  // effect body, which must not set state synchronously.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) return undefined;
     let cancelled = false;
-    listPlans()
-      .then(data => {
-        if (cancelled) return;
-        setPlans(data);
-        setPlansLoaded(true);
-        const stored = window.localStorage.getItem(ACTIVE_PLAN_LS_KEY(userId));
-        const stillExists = stored && data.some(p => p._id === stored);
-        if (!stillExists) {
-          const master = data.find(p => p.isMaster);
-          const fallback = master?._id || data[0]?._id || null;
-          setActivePlanIdState(fallback);
-          if (fallback) window.localStorage.setItem(ACTIVE_PLAN_LS_KEY(userId), fallback);
-          else window.localStorage.removeItem(ACTIVE_PLAN_LS_KEY(userId));
-        } else {
-          setActivePlanIdState(stored);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setPlansLoaded(true);
-      });
+    const key    = cacheKey(userId, CK_PLANS);
+    const cached = readCache(key);
+
+    queueMicrotask(() => {
+      if (!cancelled && cached?.value) applyPlans(cached.value);
+    });
+
+    if (!isFresh(cached)) {
+      listPlans()
+        .then(data => {
+          if (cancelled) return;
+          writeCache(key, data);
+          applyPlans(data);
+        })
+        .catch(() => {
+          // Keep the cached copy on screen; only an empty cache falls through
+          // to the "no plans yet" state.
+          if (!cancelled && !cached?.value) setPlansLoaded(true);
+        });
+    }
     return () => { cancelled = true; };
+  }, [userId, applyPlans]);
+
+  // Every local write re-caches the list, so the next mount paints the
+  // post-write state instead of flashing the pre-write one.
+  const cachePlans = useCallback((data) => {
+    if (userId) writeCache(cacheKey(userId, CK_PLANS), data);
   }, [userId]);
 
   const setActivePlanId = useCallback((id) => {
@@ -86,46 +126,59 @@ export function useGym() {
     try {
       const data = await listPlans();
       setPlans(data);
+      cachePlans(data);
       return data;
     } catch (err) {
       toast.error('Failed to refresh plans');
       throw err;
     }
-  }, []);
+  }, [cachePlans]);
 
   const createNewPlan = useCallback(async (body) => {
     const created = await createPlan(body);
-    setPlans(prev => [...prev, created]);
+    setPlans(prev => {
+      const next = [...prev, created];
+      cachePlans(next);
+      return next;
+    });
     setActivePlanId(created._id);
     return created;
-  }, [setActivePlanId]);
+  }, [setActivePlanId, cachePlans]);
 
   const updateExistingPlan = useCallback(async (id, body) => {
     const updated = await updatePlan(id, body);
-    setPlans(prev => prev.map(p => p._id === id ? updated : p));
+    setPlans(prev => {
+      const next = prev.map(p => p._id === id ? updated : p);
+      cachePlans(next);
+      return next;
+    });
     return updated;
-  }, []);
+  }, [cachePlans]);
 
   const archiveExistingPlan = useCallback(async (id) => {
     await archivePlan(id);
-    setPlans(prev => prev.filter(p => p._id !== id));
+    setPlans(prev => {
+      const next = prev.filter(p => p._id !== id);
+      cachePlans(next);
+      return next;
+    });
     if (activePlanId === id) {
       const next = plans.find(p => p._id !== id);
       setActivePlanId(next?._id || null);
     }
-  }, [plans, activePlanId, setActivePlanId]);
+  }, [plans, activePlanId, setActivePlanId, cachePlans]);
 
   const unarchiveExistingPlan = useCallback(async (id) => {
     const restored = await unarchivePlan(id);
     setPlans(prev => {
       const idx = prev.findIndex(p => p._id === id);
-      if (idx === -1) return [...prev, restored];
-      const next = prev.slice();
-      next[idx] = restored;
+      const next = idx === -1 ? [...prev, restored] : prev.slice();
+      if (idx !== -1) next[idx] = restored;
+      cachePlans(next);
       return next;
     });
     return restored;
-  }, []);
+  }, [cachePlans]);
 
   const loadEntries = useCallback(async (date) => {
     setLoading(true);
@@ -187,6 +240,42 @@ export function useGym() {
     }
   }, []);
 
+  // Bumped by every entry write. Recommendations are derived from logged sets,
+  // so a save or delete invalidates both the cached plan targets and the
+  // per-date "next up" chips on the Log tab.
+  const [recsEpoch, setRecsEpoch] = useState(0);
+  const invalidateRecs = useCallback(() => {
+    if (userId) clearCache(cacheKey(userId, CK_RECS));
+    setRecsEpoch(v => v + 1);
+  }, [userId]);
+
+  // Next-weight targets for every exercise in the active plan. Held here rather
+  // than in PlanTab so leaving the tab and coming back doesn't refetch. The
+  // cache holds one plan at a time — { planId, list } — so a cached list can
+  // never be served for a plan it wasn't computed for.
+  const [planRecs, setPlanRecs] = useState([]);
+
+  useEffect(() => {
+    if (!userId || !activePlanId) return undefined;
+    let cancelled = false;
+    const key    = cacheKey(userId, CK_RECS);
+    const entry  = readCache(key);
+    const cached = entry?.value?.planId === activePlanId ? entry.value.list : null;
+
+    queueMicrotask(() => {
+      if (!cancelled && cached) setPlanRecs(cached);
+    });
+
+    if (!cached || !isFresh(entry)) {
+      fetchRecommendations({ planId: activePlanId }).then(list => {
+        if (cancelled) return;
+        writeCache(key, { planId: activePlanId, list });
+        setPlanRecs(list);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [userId, activePlanId, fetchRecommendations, recsEpoch]);
+
   const fetchExerciseSettings = useCallback(async () => {
     try {
       return await apiFetch('/api/gym/exercise-settings');
@@ -198,18 +287,22 @@ export function useGym() {
   // Errors propagate here (unlike the read helpers above) because the caller
   // shows a toast — a silently swallowed failure would look like a save.
   const saveExerciseSetting = useCallback(async (exerciseName, values) => {
-    return await apiFetch(
+    const saved = await apiFetch(
       `/api/gym/exercise-settings/${encodeURIComponent(exerciseName.trim())}`,
       { method: 'PUT', body: JSON.stringify(values) },
     );
-  }, []);
+    invalidateRecs(); // step / rounding changes move every target for this lift
+    return saved;
+  }, [invalidateRecs]);
 
   const resetExerciseSetting = useCallback(async (exerciseName) => {
-    return await apiFetch(
+    const reset = await apiFetch(
       `/api/gym/exercise-settings/${encodeURIComponent(exerciseName.trim())}`,
       { method: 'DELETE' },
     );
-  }, []);
+    invalidateRecs();
+    return reset;
+  }, [invalidateRecs]);
 
   const fetchExerciseNames = useCallback(async () => {
     try {
@@ -228,6 +321,39 @@ export function useGym() {
     }
   }, []);
 
+  // The full, unfiltered catalogue — the Plan tab and the plan editor both want
+  // it every time they mount, so it lives here behind the same cache. Callers
+  // that need a single body part still go through fetchExerciseList.
+  const [exerciseLibrary, setExerciseLibrary] = useState([]);
+  const [libraryEpoch, setLibraryEpoch] = useState(0);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    let cancelled = false;
+    const key    = cacheKey(userId, CK_LIBRARY);
+    const cached = readCache(key);
+
+    queueMicrotask(() => {
+      if (!cancelled && cached?.value) setExerciseLibrary(cached.value);
+    });
+
+    if (!isFresh(cached)) {
+      fetchExerciseList().then(list => {
+        // fetchExerciseList swallows errors into [], which would otherwise
+        // cache an empty catalogue over a good one.
+        if (cancelled || !list.length) return;
+        writeCache(key, list);
+        setExerciseLibrary(list);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [userId, fetchExerciseList, libraryEpoch]);
+
+  const invalidateLibrary = useCallback(() => {
+    if (userId) clearCache(cacheKey(userId, CK_LIBRARY));
+    setLibraryEpoch(v => v + 1);
+  }, [userId]);
+
   const fetchProgress = useCallback(async (weeks = 12) => {
     try {
       return await apiFetch(`/api/gym/progress?weeks=${weeks}`);
@@ -237,23 +363,29 @@ export function useGym() {
   }, []);
 
   const addExerciseTemplate = useCallback(async (name, bodyPart, videoUrl) => {
-    return await apiFetch('/api/gym/exercises-list', {
+    const created = await apiFetch('/api/gym/exercises-list', {
       method: 'POST',
       body: JSON.stringify({ name, bodyPart, videoUrl: videoUrl || '' }),
     });
-  }, []);
+    invalidateLibrary();
+    return created;
+  }, [invalidateLibrary]);
 
   const updateExerciseTemplate = useCallback(async (id, body) => {
     // body may include any subset of { name, bodyPart, videoUrl }.
-    return await apiFetch(`/api/gym/exercises-list/${id}`, {
+    const updated = await apiFetch(`/api/gym/exercises-list/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body || {}),
     });
-  }, []);
+    invalidateLibrary();
+    return updated;
+  }, [invalidateLibrary]);
 
   const deleteExerciseTemplate = useCallback(async (id) => {
-    return await apiFetch(`/api/gym/exercises-list/${id}`, { method: 'DELETE' });
-  }, []);
+    const res = await apiFetch(`/api/gym/exercises-list/${id}`, { method: 'DELETE' });
+    invalidateLibrary();
+    return res;
+  }, [invalidateLibrary]);
 
   const addEntry = useCallback(async (data) => {
     const entry = await apiFetch('/api/gym/entries', {
@@ -261,8 +393,9 @@ export function useGym() {
       body: JSON.stringify(data),
     });
     setEntries(prev => [...prev, entry]);
+    invalidateRecs();
     return entry;
-  }, []);
+  }, [invalidateRecs]);
 
   const updateEntry = useCallback(async (id, data) => {
     const entry = await apiFetch(`/api/gym/entries/${id}`, {
@@ -270,22 +403,25 @@ export function useGym() {
       body: JSON.stringify(data),
     });
     setEntries(prev => prev.map(e => e._id === id ? entry : e));
+    invalidateRecs();
     return entry;
-  }, []);
+  }, [invalidateRecs]);
 
   const deleteEntry = useCallback(async (id) => {
     await apiFetch(`/api/gym/entries/${id}`, { method: 'DELETE' });
     setEntries(prev => prev.filter(e => e._id !== id));
-  }, []);
+    invalidateRecs();
+  }, [invalidateRecs]);
 
   return {
     entries, weekData, loading, weekLoading,
     loadEntries, loadWeek,
     fetchExerciseHistory, fetchExerciseNames,
     // Progression
-    fetchRecommendations, fetchExerciseSettings,
+    fetchRecommendations, fetchExerciseSettings, planRecs, recsEpoch,
     saveExerciseSetting, resetExerciseSetting,
-    fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate,
+    fetchExerciseList, exerciseLibrary,
+    addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate,
     addEntry, updateEntry, deleteEntry,
     fetchProgress,
     // Plans

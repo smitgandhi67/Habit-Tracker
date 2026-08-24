@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Play, Pencil, Plus, CheckCircle2, Circle, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react';
-import { useGym, BODY_PARTS } from '../hooks/useGym';
+import { useGymStore, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
 import { normalizeExerciseName } from '../lib/exerciseName';
 import { describeRecommendation, statusTone, STATUS } from '../lib/progression';
@@ -42,13 +42,11 @@ export default function PlanTab({ weekData, onOpenEntry }) {
   const weightUnit = user?.weightUnit || 'lb';
   const {
     plans, plansLoaded, activePlan, activePlanId, setActivePlanId,
-    fetchExerciseList, fetchRecommendations,
-  } = useGym();
+    exerciseLibrary, planRecs,
+  } = useGymStore();
 
   const [selectedDayLabel, setSelectedDayLabel] = useState('');
-  const [exerciseLibrary, setExerciseLibrary] = useState([]);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [recsByName, setRecsByName] = useState({});
 
   // Reset day selection when active plan changes (keep if still valid).
   useEffect(() => {
@@ -59,26 +57,14 @@ export default function PlanTab({ weekData, onOpenEntry }) {
     });
   }, [activePlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Library is the source of truth for videoUrl per exercise (plan stores only id/name).
-  useEffect(() => {
-    fetchExerciseList().then(setExerciseLibrary);
-  }, [fetchExerciseList]);
-
-  // Next-weight targets for every exercise in the active plan, in one request.
+  // The exercise library (source of truth for videoUrl — the plan stores only
+  // id/name) and the next-weight targets both come from the shared store, which
+  // fetches each once per plan and caches it, so tab switches cost nothing.
   // Keyed by normalized name because plan names can drift from catalog casing.
-  useEffect(() => {
-    let cancelled = false;
-    const request = activePlanId
-      ? fetchRecommendations({ planId: activePlanId })
-      : Promise.resolve([]);
-    request.then(list => {
-      if (cancelled) return;
-      setRecsByName(Object.fromEntries(
-        list.map(r => [normalizeExerciseName(r.exerciseName), r]),
-      ));
-    });
-    return () => { cancelled = true; };
-  }, [activePlanId, fetchRecommendations]);
+  const recsByName = useMemo(
+    () => Object.fromEntries(planRecs.map(r => [normalizeExerciseName(r.exerciseName), r])),
+    [planRecs],
+  );
 
   // Keyed by normalized name: plan names can drift from catalog casing/whitespace.
   const videoUrlByName = useMemo(() => {

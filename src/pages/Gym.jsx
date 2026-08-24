@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { format, addDays, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Trophy, Settings, BookOpen, Download, TrendingUp, TrendingDown } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useGym, BODY_PARTS } from '../hooks/useGym';
+import { GymContext, useGym, useGymStore, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
 import WeeklyCoverage from '../components/WeeklyCoverage';
 import GymEntryModal from '../components/GymEntryModal';
@@ -49,7 +49,18 @@ function NextUpChip({ rec, weightUnit }) {
   );
 }
 
+// The store lives at the page root so the tabs, the plan editor and the
+// progress view all share one copy of it — and one set of requests.
 export default function Gym() {
+  const store = useGym();
+  return (
+    <GymContext.Provider value={store}>
+      <GymPage />
+    </GymContext.Provider>
+  );
+}
+
+function GymPage() {
   const [date,       setDate]       = useState(new Date());
   const [modalOpen,  setModalOpen]  = useState(false);
   const [editEntry,  setEditEntry]  = useState(null);
@@ -88,8 +99,9 @@ export default function Gym() {
     fetchExerciseHistory,
     fetchExerciseList, addExerciseTemplate, updateExerciseTemplate, deleteExerciseTemplate,
     addEntry, updateEntry, deleteEntry,
-    activePlanId, fetchRecommendations, saveExerciseSetting, resetExerciseSetting,
-  } = useGym();
+    activePlanId, fetchRecommendations, recsEpoch,
+    saveExerciseSetting, resetExerciseSetting,
+  } = useGymStore();
 
   const dateKey = format(date, 'yyyy-MM-dd');
 
@@ -99,12 +111,11 @@ export default function Gym() {
   }, [dateKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Next-weight targets for the exercises logged on this date, so each card can
-  // show what to lift next time. One request per date, not one per entry.
+  // show what to lift next time. One request per date, not one per entry. Also
+  // keyed on recsEpoch, which the store bumps after every entry write: editing
+  // a set's reps changes the recommendation but NOT the set of exercise names,
+  // so the name key alone would leave the chip showing pre-edit advice.
   const [recsByName, setRecsByName] = useState({});
-  // Bumped after any write. Editing a set's reps changes the recommendation but
-  // NOT the set of exercise names, so the name key alone would leave the chip
-  // showing advice derived from the pre-edit numbers.
-  const [recsVersion, setRecsVersion] = useState(0);
   // NUL-joined: it cannot occur in a trimmed exercise name, so the key is safe
   // to split back into the request list.
   const loggedNamesKey = [...new Set(entries.map(e => e.exerciseName))].join('\u0000');
@@ -122,7 +133,7 @@ export default function Gym() {
       setRecsByName(Object.fromEntries(list.map(r => [r.exerciseName, r])));
     });
     return () => { cancelled = true; };
-  }, [loggedNamesKey, activePlanId, fetchRecommendations, recsVersion]);
+  }, [loggedNamesKey, activePlanId, fetchRecommendations, recsEpoch]);
 
   // The modal resolves its rep window from whichever plan is selected in the
   // Plan tab, so the target it shows matches the plan the user is following.
@@ -150,7 +161,6 @@ export default function Gym() {
         toast.success('Exercise logged!');
       }
       loadWeek(date);
-      setRecsVersion(v => v + 1);
     } catch (err) {
       toast.error(err.message || 'Failed to save entry');
       throw err;
@@ -162,7 +172,6 @@ export default function Gym() {
     try {
       await deleteEntry(id);
       loadWeek(date);
-      setRecsVersion(v => v + 1);
       toast.success('Entry deleted');
     } catch {
       toast.error('Failed to delete entry');
@@ -174,6 +183,11 @@ export default function Gym() {
     acc[e.bodyPart].push(e);
     return acc;
   }, {});
+
+  // Day totals for the Log header. The set count includes warmups — this is a
+  // tally of what was done, not of what counts toward progression.
+  const totalExercises = entries.length;
+  const totalSets = entries.reduce((n, e) => n + (e.sets?.length || 0), 0);
 
   const isCurrentDay  = isToday(date);
   const formattedDate = isCurrentDay ? 'Today' : format(date, 'EEE, MMM d');
@@ -265,6 +279,17 @@ export default function Gym() {
           {/* Weekly coverage */}
           {!weekLoading && (
             <WeeklyCoverage weekData={weekData} referenceDate={date} />
+          )}
+
+          {/* Totals for the selected day */}
+          {!loading && totalExercises > 0 && (
+            <div className="flex items-baseline justify-between mb-3 px-1">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Logged</p>
+              <p className="text-xs font-semibold text-slate-600 tabular-nums">
+                {totalExercises} {totalExercises === 1 ? 'exercise' : 'exercises'}
+                <span className="text-slate-400"> · {totalSets} {totalSets === 1 ? 'set' : 'sets'}</span>
+              </p>
+            </div>
           )}
 
           {/* Entries */}

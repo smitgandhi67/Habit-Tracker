@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, ChevronDown, ChevronRight, Archive, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useGym, BODY_PARTS } from '../hooks/useGym';
+import { useGymStore, BODY_PARTS } from '../hooks/useGym';
 
 function emptyDay(label = 'New day') {
   return { label, focus: '', isRestDay: false, notes: '', exercises: [] };
@@ -15,18 +15,13 @@ export default function PlanEditor({ isAdmin, onClose }) {
   const {
     plans, refetchPlans,
     createPlan, updatePlan, archivePlan,
-    fetchExerciseList,
-  } = useGym();
+    exerciseLibrary: library,
+  } = useGymStore();
 
   const [selectedId, setSelectedId] = useState(plans[0]?._id || null);
   const [draft,      setDraft]      = useState(null); // working copy of selected plan
-  const [library,    setLibrary]    = useState([]);
   const [saving,     setSaving]     = useState(false);
   const [openDays,   setOpenDays]   = useState({}); // day index → bool
-
-  useEffect(() => {
-    fetchExerciseList().then(setLibrary);
-  }, [fetchExerciseList]);
 
   // Load draft when selection changes — intentional reset-on-change: the draft is an
   // editable working copy that must be re-cloned whenever the selected plan changes.

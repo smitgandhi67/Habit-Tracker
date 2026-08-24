@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useGym, BODY_PARTS } from '../hooks/useGym';
+import { useGymStore, BODY_PARTS } from '../hooks/useGym';
 import { useAuth } from '../context/AuthContext';
 import {
   summarize, averagePct, formatPct, pctTone,
@@ -25,7 +25,7 @@ function SessionBar({ count, max }) {
 
 export default function ExerciseProgress() {
   const { user } = useAuth() || {};
-  const { fetchProgress } = useGym();
+  const { fetchProgress } = useGymStore();
 
   const [periodKey, setPeriodKey] = useState(() => {
     if (typeof window === 'undefined') return '1mo';
