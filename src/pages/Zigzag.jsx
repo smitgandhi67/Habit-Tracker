@@ -14,9 +14,12 @@ const rand2 = () => 10 + Math.floor(Math.random() * 90);   // 10..99
 const rand3 = () => 100 + Math.floor(Math.random() * 900); // 100..999
 const randBetween = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1)); // inclusive
 
-// Grades 2-3 work in 2-digit numbers; grades 4-5 (and unset grades) in 3-digit.
-function isLowerGrade(grade) {
-  return grade === 2 || grade === 3;
+// Grades 2-3 work in 2-digit numbers; grade 4 (and unset grades) in 3-digit; grade 5+
+// gets a fresh coin flip per question between the 2-digit and 3-digit forms.
+function digitsFor(grade) {
+  if (grade === 2 || grade === 3) return 2;
+  if (grade >= 5) return Math.random() < 0.5 ? 2 : 3;
+  return 3;
 }
 
 // Per-mode wiring: the operator glyph, the endpoint, the copy and the accent classes.
@@ -63,18 +66,19 @@ const MODES = {
 // 2-digit form, ≥100 for the 3-digit one). The fixed answer width is what lets the
 // auto-grade-on-length rule below work the same way it does for addition.
 function makeQuestion(grade, mode) {
-  const lower = isLowerGrade(grade);
+  const digits = digitsFor(grade);
+  const lower = digits === 2;
   if (mode === 'sub') {
     const hi = lower ? 99 : 999;
     const floor = lower ? 10 : 100;          // smallest allowed result
     const sub = () => (lower ? randBetween(10, 44) : randBetween(100, 449));
     const b = sub(), c = sub();
     const a = randBetween(b + c + floor, hi); // hi is always reachable: max b+c+floor = 998
-    return { a, b, c, answer: a - b - c, key: `${a}-${b}-${c}` };
+    return { a, b, c, digits, answer: a - b - c, key: `${a}-${b}-${c}` };
   }
   const r = lower ? rand2 : rand3;
   const a = r(), b = r(), c = r();
-  return { a, b, c, answer: a + b + c, key: `${a}+${b}+${c}` };
+  return { a, b, c, digits, answer: a + b + c, key: `${a}+${b}+${c}` };
 }
 
 // Four answer choices for the wrong/timeout reveal: the correct answer plus three
@@ -213,8 +217,7 @@ export default function Zigzag({ embedded = false, mode = 'add' }) {
     inputRef.current?.focus();
   }
 
-  const digits = isLowerGrade(user?.grade) ? '2-digit' : '3-digit';
-  const subtitle = `${cfg.verb} three ${digits} numbers · ${timerTotal}s each · first 20/day earn ⭐${cfg.tierPoints}`;
+  const subtitle = `${cfg.verb} three ${question.digits}-digit numbers · ${timerTotal}s each · first 20/day earn ⭐${cfg.tierPoints}`;
 
   // The practice card is shared by the standalone page and the embedded (inline on
   // /math) form; embedded shows a compact subtitle in place of the page header.
